@@ -189,3 +189,10 @@ test('no CLI call ever carries a token argument', async () => {
   await openFromLink({ ...req, version: 'v1' }, deps, HOME);
   for (const c of cli.calls) assert.ok(!c.args.some((a) => /token|pat/i.test(a)), c.args.join(' '));
 });
+
+test('probes the CLI once per runner', async () => {
+  const { deps, cli } = makeDeps({ logins: { default: INSTANCE } });
+  await openFromLink({ ...req, folder: 'a' }, deps, HOME);
+  await openFromLink({ ...req, folder: 'b' }, deps, HOME);
+  assert.equal(cli.calls.filter((c) => c.args[0] === '--version').length, 1);
+});

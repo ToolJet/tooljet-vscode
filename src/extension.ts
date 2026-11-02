@@ -236,6 +236,9 @@ export function activate(context: vscode.ExtensionContext): void {
       await vscode.commands.executeCommand(pick.command);
     }),
     vscode.workspace.onDidChangeWorkspaceFolders(() => refresh()),
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration('tooljet.cliPath')) deps.cli = new VscodeCli(output);
+    }),
     { dispose: () => dev?.running.kill() }
   );
 

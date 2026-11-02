@@ -37,8 +37,12 @@ export function lastError(result: RunResult): string {
 const run = (deps: Deps, args: string[], cwd: string, title: string, visible = true) =>
   deps.cli.start(args, { cwd, title, visible }).done;
 
+// CLIs already found good, so each command does not probe again. A new runner (after a cliPath change) probes anew.
+const verified = new WeakSet<CliRunner>();
+
 /** Checks the CLI is installed and has the `app` and `auth login` commands; offers to install it. */
 export async function ensureCli(deps: Deps, cwd: string): Promise<boolean> {
+  if (verified.has(deps.cli)) return true;
   const probe = async (): Promise<'missing' | 'old' | 'ok'> => {
     const version = await run(deps, ['--version'], cwd, 'ToolJet: CLI version', false).catch(() => undefined);
     if (!version || version.code !== 0) return 'missing';
@@ -47,7 +51,10 @@ export async function ensureCli(deps: Deps, cwd: string): Promise<boolean> {
     return app?.code === 0 && auth?.code === 0 ? 'ok' : 'old';
   };
   let state = await probe();
-  if (state === 'ok') return true;
+  if (state === 'ok') {
+    verified.add(deps.cli);
+    return true;
+  }
   const choice = await deps.ui.ask(
     state === 'missing' ? 'The ToolJet CLI is not installed.' : 'This ToolJet CLI is too old for Code mode apps.',
     'Install it now with "npm i -g @tooljet/cli"? It runs in a terminal you can watch. ' +
@@ -69,6 +76,7 @@ export async function ensureCli(deps: Deps, cwd: string): Promise<boolean> {
     );
     return false;
   }
+  verified.add(deps.cli);
   return true;
 }
 
