@@ -44,6 +44,7 @@ export function readStoredLogins(file = CREDENTIALS_PATH): StoredLogins {
   } catch {
     return { origins: [] };
   }
+  if (!store || typeof store !== 'object') return { origins: [] };
   const workspaces = store && typeof store.workspaces === 'object' && store.workspaces ? store.workspaces : {};
   const origins: string[] = [];
   for (const entry of Object.values(workspaces)) {
