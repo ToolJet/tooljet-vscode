@@ -1,0 +1,11 @@
+warning App/index.tsx:29  img elements must have an alt prop, either with meaningful text, or an empty string for decorative images. (jsx-a11y/alt-text)
+1 accessibility warning (jsx-a11y)
+
+
+[1;31m✗ Error[0m : src/App/index.tsx:29  query "listOrders" does not exist in the app (pull lists 0 queries)
+
+
+[1;31m✗ Error[0m : src/App/index.tsx:29  link to "/nowhere" matches no route in app.json
+
+
+2 problems
