@@ -1,0 +1,89 @@
+{
+  "name": "tooljet",
+  "displayName": "ToolJet",
+  "description": "Open ToolJet Code mode apps from the browser, run the dev loop, check and publish from VS Code, Cursor and Windsurf.",
+  "version": "0.1.0",
+  "publisher": "tooljet",
+  "license": "AGPL-3.0-only",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ToolJet/tooljet-vscode"
+  },
+  "homepage": "https://docs.tooljet.com",
+  "bugs": {
+    "url": "https://github.com/ToolJet/tooljet-vscode/issues"
+  },
+  "icon": "media/icon.png",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "tooljet",
+    "low-code",
+    "react",
+    "internal tools"
+  ],
+  "main": "./out/src/extension.js",
+  "activationEvents": [
+    "onUri",
+    "workspaceContains:app.json",
+    "onStartupFinished"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "ToolJet commands build and run the app's code, so they only run in a trusted workspace."
+    },
+    "virtualWorkspaces": false
+  },
+  "contributes": {
+    "commands": [
+      { "command": "tooljet.openApp", "title": "Open app...", "category": "ToolJet" },
+      { "command": "tooljet.startDev", "title": "Start dev", "category": "ToolJet" },
+      { "command": "tooljet.stopDev", "title": "Stop dev", "category": "ToolJet" },
+      { "command": "tooljet.pull", "title": "Pull", "category": "ToolJet" },
+      { "command": "tooljet.check", "title": "Check", "category": "ToolJet" },
+      { "command": "tooljet.publish", "title": "Publish", "category": "ToolJet" },
+      { "command": "tooljet.installAgentInstructions", "title": "Install agent instructions", "category": "ToolJet" },
+      { "command": "tooljet.showMenu", "title": "Show actions", "category": "ToolJet" }
+    ],
+    "menus": {
+      "commandPalette": [
+        { "command": "tooljet.startDev", "when": "tooljet.linked" },
+        { "command": "tooljet.stopDev", "when": "tooljet.linked && tooljet.devRunning" },
+        { "command": "tooljet.pull", "when": "tooljet.linked" },
+        { "command": "tooljet.check", "when": "tooljet.linked" },
+        { "command": "tooljet.publish", "when": "tooljet.linked" },
+        { "command": "tooljet.installAgentInstructions", "when": "tooljet.linked" },
+        { "command": "tooljet.showMenu", "when": "tooljet.linked" }
+      ]
+    },
+    "configuration": {
+      "title": "ToolJet",
+      "properties": {
+        "tooljet.cliPath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "markdownDescription": "Path to the `tooljet` CLI. Empty means `tooljet` on your PATH. Machine scope: a workspace cannot change it."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p .",
+    "watch": "tsc -p . -w",
+    "test": "npm run compile && node --test out/test/",
+    "package": "npm run compile && vsce package --out dist/tooljet-$npm_package_version.vsix && node scripts/check-vsix.js dist/tooljet-$npm_package_version.vsix",
+    "vscode:prepublish": "npm run compile"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "1.85.0",
+    "@vscode/vsce": "^3.6.0",
+    "typescript": "^5.9.3"
+  }
+}
