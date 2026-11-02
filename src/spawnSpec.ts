@@ -23,3 +23,17 @@ export function spawnSpec(executable: string, args: string[], platform: NodeJS.P
 }
 
 export const NPM_INSTALL_CLI = ['i', '-g', '@tooljet/cli'];
+
+/*
+  The CLI prefers TOOLJET_URL and TOOLJET_PAT (or TOOLJET_TOKEN) from the environment over its stored login, and the
+  editor inherits the user's shell environment. Left in, they would send a project's commands to whatever instance
+  the shell names, with that shell's token, while the extension's instance check looks at the stored login. So every
+  CLI run gets the environment without them, and the stored login for the linked instance is what the CLI uses.
+*/
+export const TARGET_ENV = ['TOOLJET_URL', 'TOOLJET_PAT', 'TOOLJET_TOKEN'];
+
+export function cliEnv(base: NodeJS.ProcessEnv, visible: boolean): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...base, FORCE_COLOR: visible ? '1' : '0' };
+  for (const name of Object.keys(env)) if (TARGET_ENV.includes(name.toUpperCase())) delete env[name];
+  return env;
+}

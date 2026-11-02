@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
 
-import { spawnSpec } from '../src/spawnSpec';
+import { cliEnv, spawnSpec } from '../src/spawnSpec';
 import { ago, describeStatus } from '../src/statusText';
 
 test('spawns without a shell on macOS and Linux, passing arguments as they are', () => {
@@ -52,4 +52,9 @@ test('status text escapes names that come from the app', () => {
 test('ago', () => {
   assert.equal(ago('2026-11-02T10:09:40Z', now), 'just now');
   assert.equal(ago('2026-11-02T09:40:00Z', now), '30 min ago');
+});
+
+test('CLI runs never inherit an instance or token from the shell', () => {
+  const env = cliEnv({ PATH: '/bin', HOME: '/h', TOOLJET_URL: 'http://localhost:3000', TOOLJET_PAT: 'x', TOOLJET_TOKEN: 'y', tooljet_pat: 'z', TOOLJET_APP_URL: 'http://localhost:8120' }, true);
+  assert.deepEqual(env, { PATH: '/bin', HOME: '/h', TOOLJET_APP_URL: 'http://localhost:8120', FORCE_COLOR: '1' });
 });

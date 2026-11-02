@@ -3,7 +3,7 @@ import * as os from 'os';
 import * as vscode from 'vscode';
 
 import { CliRunner, RunOptions, RunResult, Running } from './ports';
-import { NPM_INSTALL_CLI, spawnSpec } from './spawnSpec';
+import { cliEnv, NPM_INSTALL_CLI, spawnSpec } from './spawnSpec';
 
 /*
   Runs the CLI as a child process. A visible run shows in a terminal of its own (a pseudoterminal fed from the
@@ -50,7 +50,7 @@ export class VscodeCli implements CliRunner {
           child = spawn(spec.command, spec.args, {
             cwd: options.cwd,
             shell: spec.shell,
-            env: { ...process.env, FORCE_COLOR: options.visible ? '1' : '0' },
+            env: cliEnv(process.env, options.visible),
           });
         } catch (err) {
           const message = (err as Error).message;
