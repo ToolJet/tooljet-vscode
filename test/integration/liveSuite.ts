@@ -31,8 +31,11 @@ export async function run(): Promise<void> {
     return [vscode.Uri.file(parent)];
   };
   w.showInputBox = async (o: any) => {
-    const error = o.validateInput ? await o.validateInput(o.value) : undefined;
-    note(`[input] ${o.title}: "${o.value}"${error ? ` (refused: ${error})` : ''} -> ${error ? 'cancelled' : 'accepted'}`);
+    // A string is a refusal; an object is an information line (the clone's full path).
+    const result = o.validateInput ? await o.validateInput(o.value) : undefined;
+    const error = typeof result === 'string' ? result : undefined;
+    const info = typeof result === 'object' && result ? ` (${result.message})` : '';
+    note(`[input] ${o.title}: "${o.value}"${error ? ` (refused: ${error})` : info} -> ${error ? 'cancelled' : 'accepted'}`);
     return error ? undefined : o.value;
   };
   const opened = vscode.commands.executeCommand;

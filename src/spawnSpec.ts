@@ -22,7 +22,7 @@ export function spawnSpec(executable: string, args: string[], platform: NodeJS.P
   return { command: quote(executable), args: args.map(quote), shell: true };
 }
 
-export const NPM_INSTALL_CLI = ['i', '-g', '@tooljet/cli'];
+export const NPM_INSTALL_CLI = ['i', '-g', '@tooljet/cli@latest'];
 
 /*
   The CLI prefers TOOLJET_URL and TOOLJET_PAT (or TOOLJET_TOKEN) from the environment over its stored login, and the

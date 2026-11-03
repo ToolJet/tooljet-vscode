@@ -40,6 +40,14 @@ export class FakeCli implements CliRunner {
     return { done: Promise.resolve(typeof r === 'function' ? r(call) : r), kill: () => {} };
   }
 
+  /** The runner after `tooljet.cliPath` changed: a new object (so it is probed again) sharing calls and replies. */
+  forPath(path: string): FakeCli {
+    const next = Object.create(this) as FakeCli;
+    next.path = path;
+    return next;
+  }
+  path = 'tooljet';
+
   async installCli() {
     this.installs++;
     this.onInstall?.();
@@ -78,14 +86,29 @@ export class FakeUi implements Ui {
     const key = Object.keys(this.answers).find((k) => message.startsWith(k));
     return key !== undefined ? this.answers[key] : actions[0];
   }
+  /** Parent folders to answer, in turn, after `parent` (for repeated pickers). */
+  parents: (string | undefined)[] = [];
+  pickedDefaults: (string | undefined)[] = [];
+  described?: string;
+  serverAddress: string | undefined = undefined;
+  cliPath: string | undefined = undefined;
   async pickParentFolder(defaultPath?: string) {
     this.pickedDefault = defaultPath;
-    return this.parent;
+    this.pickedDefaults.push(defaultPath);
+    return this.pickedDefaults.length > 1 && this.parents.length ? this.parents.shift() : this.parent;
   }
-  async inputFolderName(defaultName: string, validate: (v: string) => string | undefined) {
+  async inputFolderName(defaultName: string, validate: (v: string) => string | undefined, describe: (v: string) => string) {
     this.folderValidator = validate;
     const value = this.folderName ?? defaultName;
-    return validate(value) ? undefined : value;
+    if (validate(value)) return undefined;
+    this.described = describe(value);
+    return value;
+  }
+  async inputServerAddress(_suggestion: string, validate: (v: string) => string | undefined) {
+    return this.serverAddress === undefined || validate(this.serverAddress) ? undefined : this.serverAddress;
+  }
+  async pickCliPath() {
+    return this.cliPath;
   }
   async inputVersion() {
     return this.version;
@@ -117,7 +140,7 @@ export class MemoryStore implements Store {
   };
 }
 
-export function makeDeps(opts: { logins?: { default?: string; stored?: string[] } } = {}) {
+export function makeDeps(opts: { logins?: { default?: string; stored?: string[] }; repos?: string[] } = {}) {
   const cli = new FakeCli();
   const ui = new FakeUi();
   const store = new MemoryStore();
@@ -125,8 +148,13 @@ export function makeDeps(opts: { logins?: { default?: string; stored?: string[] 
   const dirs = new Set<string>();
   const logins = { default: opts.logins?.default, stored: opts.logins?.stored ?? [] };
   const opened: string[] = [];
+  const cliPaths: string[] = [];
   const deps: Deps = {
     cli,
+    setCliPath: async (p) => {
+      cliPaths.push(p);
+      deps.cli = cli.forPath(p);
+    },
     ui,
     store,
     host: {
@@ -136,8 +164,10 @@ export function makeDeps(opts: { logins?: { default?: string; stored?: string[] 
       join: (...parts) => parts.join('/'),
       loginState: (i) => (logins.default === i ? 'default' : logins.stored.includes(i) ? 'stored' : 'none'),
       defaultLoginOrigin: () => logins.default,
+      defaultParentFolder: () => '/home/me/ToolJet apps',
+      gitRepositoryOf: (p) => (opts.repos ?? []).find((r) => p === r || p.startsWith(r + '/')),
       openFolder: async (f) => void opened.push(f),
     },
   };
-  return { deps, cli, ui, store, files, dirs, logins, opened };
+  return { deps, cli, ui, store, files, dirs, logins, opened, cliPaths };
 }

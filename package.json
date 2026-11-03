@@ -2,7 +2,7 @@
   "name": "tooljet",
   "displayName": "ToolJet",
   "description": "Open ToolJet Code mode apps from the browser, run a live preview, check and publish from VS Code, Cursor and Windsurf.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "tooljet",
   "license": "AGPL-3.0-only",
   "repository": {
@@ -121,7 +121,8 @@
           "type": "string",
           "default": "",
           "scope": "machine",
-          "markdownDescription": "Path to the `tooljet` CLI. Empty means `tooljet` on your PATH. Machine scope: a workspace cannot change it."
+          "description": "Path to the tooljet CLI executable. Empty means tooljet on your PATH.",
+          "markdownDescription": "Path to the `tooljet` CLI executable, for example `/usr/local/bin/tooljet` or `cli/bin/run` in a ToolJet checkout. Empty means `tooljet` on your PATH. The CLI needs the Code mode `app` and `auth login` commands; when it lacks them, opening an app offers **Update the CLI** and **Choose a CLI...**, which sets this. Machine scope: a workspace cannot change it."
         }
       }
     }

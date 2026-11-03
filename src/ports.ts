@@ -26,7 +26,7 @@ export interface Running {
 export interface CliRunner {
   /** Runs the `tooljet` CLI with these arguments. Never through a shell on macOS or Linux. */
   start(args: string[], options: RunOptions): Running;
-  /** Runs `npm i -g @tooljet/cli` in a visible terminal. */
+  /** Runs `npm i -g @tooljet/cli@latest` in a visible terminal (installs or updates). */
   installCli(): Promise<RunResult>;
 }
 
@@ -34,8 +34,17 @@ export interface Ui {
   /** A modal question; resolves to the chosen action or undefined when dismissed. */
   ask(message: string, detail: string, actions: string[]): Promise<string | undefined>;
   pickParentFolder(defaultPath?: string): Promise<string | undefined>;
-  inputFolderName(defaultName: string, validate: (value: string) => string | undefined): Promise<string | undefined>;
+  /** `describe` says, for a valid name, where the clone goes. */
+  inputFolderName(
+    defaultName: string,
+    validate: (value: string) => string | undefined,
+    describe: (value: string) => string
+  ): Promise<string | undefined>;
+  /** Asks for a ToolJet server address (an origin), prefilled with `suggestion`. */
+  inputServerAddress(suggestion: string, validate: (value: string) => string | undefined): Promise<string | undefined>;
   inputVersion(prompt: string): Promise<string | undefined>;
+  /** A file dialog for the `tooljet` executable. */
+  pickCliPath(): Promise<string | undefined>;
   info(message: string): void;
   warn(message: string): void;
   error(message: string): void;
@@ -70,5 +79,9 @@ export interface Host {
   join(...parts: string[]): string;
   loginState(instance: string): 'default' | 'stored' | 'none';
   defaultLoginOrigin(): string | undefined;
+  /** Where clones go when the user has not picked a parent folder yet (~/ToolJet apps, created when missing). */
+  defaultParentFolder(): string;
+  /** The root of the Git repository that contains `path`, if any. */
+  gitRepositoryOf(path: string): string | undefined;
   openFolder(folder: string): Promise<void>;
 }

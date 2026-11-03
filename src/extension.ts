@@ -52,6 +52,21 @@ const host: Host = {
   join: (...parts) => path.join(...parts),
   loginState: (instance) => loginStateFor(instance),
   defaultLoginOrigin: () => readStoredLogins().defaultOrigin,
+  defaultParentFolder: () => {
+    const folder = path.join(os.homedir(), 'ToolJet apps');
+    try {
+      fs.mkdirSync(folder, { recursive: true });
+    } catch {
+      return os.homedir();
+    }
+    return folder;
+  },
+  gitRepositoryOf: (start) => {
+    for (let dir = path.resolve(start); ; dir = path.dirname(dir)) {
+      if (fs.existsSync(path.join(dir, '.git'))) return dir;
+      if (path.dirname(dir) === dir) return undefined;
+    }
+  },
   openFolder: async (folder) => {
     const forceNewWindow = (vscode.workspace.workspaceFolders?.length ?? 0) > 0;
     await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(folder), { forceNewWindow });
@@ -71,10 +86,36 @@ const ui: Ui = {
     });
     return picked?.[0]?.fsPath;
   },
-  inputFolderName: (defaultName, validate) =>
+  inputFolderName: (defaultName, validate, describe) =>
     Promise.resolve(
-      vscode.window.showInputBox({ title: 'Folder name for the app', value: defaultName, validateInput: validate, ignoreFocusOut: true })
+      vscode.window.showInputBox({
+        title: 'Folder name for the app',
+        value: defaultName,
+        // A valid name shows where the clone goes, so the full path is in view before anything is written.
+        validateInput: (value) => validate(value) ?? { message: describe(value), severity: vscode.InputBoxValidationSeverity.Info },
+        ignoreFocusOut: true,
+      })
     ),
+  inputServerAddress: (suggestion, validate) =>
+    Promise.resolve(
+      vscode.window.showInputBox({
+        title: "ToolJet server address",
+        prompt: 'The address of ToolJet\'s server (API), for example https://tooljet-api.example.com or http://localhost:3000',
+        value: suggestion,
+        validateInput: validate,
+        ignoreFocusOut: true,
+      })
+    ),
+  pickCliPath: async () => {
+    const picked = await vscode.window.showOpenDialog({
+      canSelectFiles: true,
+      canSelectFolders: false,
+      canSelectMany: false,
+      openLabel: 'Use this CLI',
+      title: 'The tooljet executable (for example cli/bin/run in a ToolJet checkout)',
+    });
+    return picked?.[0]?.fsPath;
+  },
   inputVersion: (prompt) => Promise.resolve(vscode.window.showInputBox({ title: 'ToolJet: Publish', prompt, ignoreFocusOut: true })),
   info: (m) => void vscode.window.showInformationMessage(m),
   warn: (m) => void vscode.window.showWarningMessage(m),
@@ -109,7 +150,16 @@ export function activate(context: vscode.ExtensionContext): void {
   const checkProblems = vscode.languages.createDiagnosticCollection('tooljet-check');
   const devProblems = vscode.languages.createDiagnosticCollection('tooljet-dev');
   const store = new GlobalStore(context.globalState);
-  const deps: Deps = { ui, cli: new VscodeCli(output), host, store };
+  const deps: Deps = {
+    ui,
+    cli: new VscodeCli(output),
+    host,
+    store,
+    setCliPath: async (cliPath) => {
+      await vscode.workspace.getConfiguration('tooljet').update('cliPath', cliPath, vscode.ConfigurationTarget.Global);
+      deps.cli = new VscodeCli(output);
+    },
+  };
   const statusBar = new StatusBar();
   context.subscriptions.push(output, checkProblems, devProblems, statusBar);
 
@@ -237,6 +287,7 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     vscode.workspace.onDidChangeWorkspaceFolders(() => refresh()),
     vscode.workspace.onDidChangeConfiguration((e) => {
+      // A runner is checked once; a changed path gets a new one (setCliPath has already made it when it changed the path).
       if (e.affectsConfiguration('tooljet.cliPath')) deps.cli = new VscodeCli(output);
     }),
     { dispose: () => dev?.running.kill() }
