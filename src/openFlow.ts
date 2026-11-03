@@ -1,5 +1,6 @@
 import { CliRunner, Host, RunResult, Store, Ui } from './ports';
 import { stripAnsi } from './cliOutput';
+import { NPM_CLI_PACKAGE } from './spawnSpec';
 import { OpenRequest, parseInstance } from './uri';
 
 /*
@@ -57,11 +58,19 @@ export const CHOOSE_CLI = 'Choose a CLI...';
 /**
  * Checks the CLI is installed and has the `app` and `auth login` commands. When it is missing or too old, offers to
  * install or update it (npm, in a terminal the user can watch) or to pick another `tooljet` executable, and keeps
- * offering both until the CLI is good or the user gives up.
+ * offering both until the CLI is good or the user gives up. The install comes from `server` when that ToolJet server
+ * serves the CLI it was built with, whose commands match it; else from npm.
  */
-export async function ensureCli(deps: Deps, cwd: string): Promise<boolean> {
+export async function ensureCli(deps: Deps, cwd: string, server?: string): Promise<boolean> {
   if (verified.has(deps.cli)) return true;
   let state = await probeCli(deps, cwd);
+  if (state === 'ok') {
+    verified.add(deps.cli);
+    return true;
+  }
+  const tarball = server ? await deps.host.cliTarball(server).catch(() => undefined) : undefined;
+  const spec = tarball ?? NPM_CLI_PACKAGE;
+  const from = tarball ? server : 'npm';
   let after: 'install' | 'choose' | undefined;
   while (state !== 'ok') {
     const install = state === 'missing' ? 'Install' : 'Update the CLI';
@@ -69,7 +78,7 @@ export async function ensureCli(deps: Deps, cwd: string): Promise<boolean> {
       after === 'install'
         ? state === 'missing'
           ? 'The ToolJet CLI was installed but is not on the PATH the editor sees.'
-          : 'The ToolJet CLI from npm does not have the Code mode commands yet.'
+          : `The ToolJet CLI from ${from} does not have the Code mode commands yet.`
         : after === 'choose'
           ? state === 'missing'
             ? 'That file did not run as the ToolJet CLI.'
@@ -80,12 +89,13 @@ export async function ensureCli(deps: Deps, cwd: string): Promise<boolean> {
     const detail =
       after === 'install'
         ? 'Choose a ToolJet CLI that has the "app" commands (for example one built from the ToolJet repository\'s cli/bin/run), or restart the editor if the PATH changed.'
-        : `${install === 'Install' ? 'Install' : 'Update'} it with "npm i -g @tooljet/cli@latest" in a terminal you can watch, ` +
+        : `${install === 'Install' ? 'Install' : 'Update'} it with "npm i -g ${spec}" in a terminal you can watch` +
+          (tarball ? ` (the CLI ${server} was built with), ` : ', ') +
           'or choose a tooljet executable you already have. Your choice is saved as the "tooljet.cliPath" setting.';
     const actions = after === 'install' ? [CHOOSE_CLI] : [install, CHOOSE_CLI];
     const choice = await deps.ui.ask(message, detail, actions);
     if (choice === install) {
-      const installed = await deps.cli.installCli();
+      const installed = await deps.cli.installCli(spec);
       if (installed.code !== 0) {
         deps.ui.error(`Installing the ToolJet CLI failed: ${lastError(installed)}`);
         return false;
@@ -234,7 +244,7 @@ export async function openFromLink(req: OpenRequest, deps: Deps, home: string): 
   );
   if (confirmed !== 'Open') return 'cancelled';
 
-  if (!(await ensureCli(deps, home))) return 'cancelled';
+  if (!(await ensureCli(deps, home, req.api ?? req.instance))) return 'cancelled';
   const server = await signInForLink(deps, req, home);
   if (!server) return 'cancelled';
   const linked = { ...req, instance: server };

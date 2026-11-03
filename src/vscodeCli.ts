@@ -3,7 +3,7 @@ import * as os from 'os';
 import * as vscode from 'vscode';
 
 import { CliRunner, RunOptions, RunResult, Running } from './ports';
-import { cliEnv, NPM_INSTALL_CLI, spawnSpec } from './spawnSpec';
+import { cliEnv, npmInstallCli, spawnSpec } from './spawnSpec';
 
 /*
   Runs the CLI as a child process. A visible run shows in a terminal of its own (a pseudoterminal fed from the
@@ -25,9 +25,9 @@ export class VscodeCli implements CliRunner {
     return this.spawnRun(this.executable(), args, options, 'tooljet');
   }
 
-  installCli(): Promise<RunResult> {
+  installCli(spec: string): Promise<RunResult> {
     const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-    return this.spawnRun(npm, NPM_INSTALL_CLI, { cwd: os.homedir(), title: 'ToolJet: install CLI', visible: true }, 'npm').done;
+    return this.spawnRun(npm, npmInstallCli(spec), { cwd: os.homedir(), title: 'ToolJet: install CLI', visible: true }, 'npm').done;
   }
 
   private spawnRun(executable: string, args: string[], options: RunOptions, label: string): Running {

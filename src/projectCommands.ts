@@ -30,7 +30,7 @@ export const instanceOf = (project: Project, deps: Pick<Deps, 'host'>): string |
  * project was opened from (another `tooljet auth login` elsewhere may have changed it).
  */
 async function ready(project: Project, deps: Deps): Promise<boolean> {
-  if (!(await ensureCli(deps, project.root))) return false;
+  if (!(await ensureCli(deps, project.root, instanceOf(project, deps)))) return false;
   if (project.instance) return ensureLogin(deps, project.instance, project.root);
   if (!deps.host.defaultLoginOrigin()) {
     deps.ui.error('The ToolJet CLI is not signed in. Open the app from ToolJet ("Open in VS Code"), or run "tooljet auth login --url <instance>".');
@@ -83,7 +83,7 @@ export async function publish(project: Project, deps: Deps): Promise<boolean> {
 }
 
 export async function installAgentInstructions(project: Project, deps: Deps): Promise<boolean> {
-  if (!(await ensureCli(deps, project.root))) return false;
+  if (!(await ensureCli(deps, project.root, instanceOf(project, deps)))) return false;
   const result = await deps.cli.start(['skill', 'install'], { cwd: project.root, title: 'ToolJet: agent instructions', visible: false }).done;
   if (result.code === 0) deps.ui.info('Wrote the ToolJet agent instructions: CLAUDE.md, AGENTS.md and .cursor/rules/tooljet.mdc.');
   else deps.ui.error(`Installing agent instructions failed: ${lastError(result)}`);

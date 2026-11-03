@@ -83,6 +83,30 @@ test('offers to install a missing CLI and installs it only on consent', async ()
   assert.ok(accepted.ui.asked.includes('The ToolJet CLI is not installed.'));
 });
 
+test("installs the CLI the instance serves (its server's, when the link names one), else npm's", async () => {
+  const served = makeDeps({ logins: { default: API }, servesCli: [API] });
+  served.cli.installed = false;
+  served.cli.onInstall = () => (served.cli.installed = true);
+  served.ui.answer('The ToolJet CLI is not installed', 'Install');
+  assert.equal(await openFromLink({ instance: FRONTEND, api: API, appId: APP }, served.deps, HOME), 'cloned');
+  assert.deepEqual(served.tarballChecks, [API]);
+  assert.deepEqual(served.cli.installedFrom, [`${API}/api/code-mode/cli/tooljet-cli.tgz`]);
+  const detail = served.ui.details[served.ui.asked.indexOf('The ToolJet CLI is not installed.')];
+  assert.match(detail, /npm i -g http:\/\/localhost:3055\/api\/code-mode\/cli\/tooljet-cli\.tgz/);
+
+  const unserved = makeDeps({ logins: { default: INSTANCE } });
+  unserved.cli.installed = false;
+  unserved.cli.onInstall = () => (unserved.cli.installed = true);
+  assert.equal(await openFromLink(req, unserved.deps, HOME), 'cloned');
+  assert.deepEqual(unserved.tarballChecks, [INSTANCE]);
+  assert.deepEqual(unserved.cli.installedFrom, ['@tooljet/cli@latest']);
+
+  // A good CLI needs no install, so the instance is not asked.
+  const good = makeDeps({ logins: { default: INSTANCE }, servesCli: [INSTANCE] });
+  assert.equal(await openFromLink(req, good.deps, HOME), 'cloned');
+  assert.deepEqual(good.tarballChecks, []);
+});
+
 test('treats a CLI without the app commands as too old', async () => {
   const { deps, cli, ui } = makeDeps({ logins: { default: INSTANCE } });
   cli.reply('app clone --help', { code: 2, output: 'command app:clone not found' });

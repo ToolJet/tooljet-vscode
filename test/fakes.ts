@@ -1,4 +1,5 @@
 import { Deps } from '../src/openFlow';
+import { cliTarballUrl } from '../src/spawnSpec';
 import { AppJson, CliRunner, LinkRecord, RunOptions, RunResult, Store, Ui } from '../src/ports';
 
 /* Fakes for the flows: a scripted CLI, a scripted UI, an in-memory store and file system. */
@@ -48,8 +49,11 @@ export class FakeCli implements CliRunner {
   }
   path = 'tooljet';
 
-  async installCli() {
+  installedFrom: string[] = [];
+
+  async installCli(spec: string) {
     this.installs++;
+    this.installedFrom.push(spec);
     this.onInstall?.();
     return this.installResult;
   }
@@ -67,6 +71,7 @@ export class FakeCli implements CliRunner {
 
 export class FakeUi implements Ui {
   asked: string[] = [];
+  details: string[] = [];
   messages: { level: string; text: string }[] = [];
   answers: Record<string, string | undefined> = {};
   parent: string | undefined = '/home/me/apps';
@@ -81,8 +86,9 @@ export class FakeUi implements Ui {
     return this;
   }
 
-  async ask(message: string, _detail: string, actions: string[]) {
+  async ask(message: string, detail: string, actions: string[]) {
     this.asked.push(message);
+    this.details.push(detail);
     const key = Object.keys(this.answers).find((k) => message.startsWith(k));
     return key !== undefined ? this.answers[key] : actions[0];
   }
@@ -140,7 +146,9 @@ export class MemoryStore implements Store {
   };
 }
 
-export function makeDeps(opts: { logins?: { default?: string; stored?: string[] }; repos?: string[] } = {}) {
+export function makeDeps(
+  opts: { logins?: { default?: string; stored?: string[] }; repos?: string[]; servesCli?: string[] } = {}
+) {
   const cli = new FakeCli();
   const ui = new FakeUi();
   const store = new MemoryStore();
@@ -149,6 +157,7 @@ export function makeDeps(opts: { logins?: { default?: string; stored?: string[] 
   const logins = { default: opts.logins?.default, stored: opts.logins?.stored ?? [] };
   const opened: string[] = [];
   const cliPaths: string[] = [];
+  const tarballChecks: string[] = [];
   const deps: Deps = {
     cli,
     setCliPath: async (p) => {
@@ -166,8 +175,12 @@ export function makeDeps(opts: { logins?: { default?: string; stored?: string[] 
       defaultLoginOrigin: () => logins.default,
       defaultParentFolder: () => '/home/me/ToolJet apps',
       gitRepositoryOf: (p) => (opts.repos ?? []).find((r) => p === r || p.startsWith(r + '/')),
+      cliTarball: async (origin) => {
+        tarballChecks.push(origin);
+        return (opts.servesCli ?? []).includes(origin) ? cliTarballUrl(origin) : undefined;
+      },
       openFolder: async (f) => void opened.push(f),
     },
   };
-  return { deps, cli, ui, store, files, dirs, logins, opened, cliPaths };
+  return { deps, cli, ui, store, files, dirs, logins, opened, cliPaths, tarballChecks };
 }

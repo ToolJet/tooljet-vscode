@@ -26,8 +26,8 @@ export interface Running {
 export interface CliRunner {
   /** Runs the `tooljet` CLI with these arguments. Never through a shell on macOS or Linux. */
   start(args: string[], options: RunOptions): Running;
-  /** Runs `npm i -g @tooljet/cli@latest` in a visible terminal (installs or updates). */
-  installCli(): Promise<RunResult>;
+  /** Runs `npm i -g <spec>` in a visible terminal (installs or updates): a tarball URL, or npm's package. */
+  installCli(spec: string): Promise<RunResult>;
 }
 
 export interface Ui {
@@ -83,5 +83,7 @@ export interface Host {
   defaultParentFolder(): string;
   /** The root of the Git repository that contains `path`, if any. */
   gitRepositoryOf(path: string): string | undefined;
+  /** The URL of the CLI tarball this ToolJet server serves, if it serves one (a HEAD request; nothing is downloaded). */
+  cliTarball(origin: string): Promise<string | undefined>;
   openFolder(folder: string): Promise<void>;
 }

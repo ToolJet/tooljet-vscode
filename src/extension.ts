@@ -8,6 +8,7 @@ import { loginStateFor, readStoredLogins } from './credentials';
 import { Deps, openFromLink } from './openFlow';
 import { AppJson, Host, LinkRecord, Store, Ui } from './ports';
 import * as project from './projectCommands';
+import { cliTarballUrl } from './spawnSpec';
 import { StatusBar } from './statusBar';
 import { parseInstance, parseOpenUri } from './uri';
 import { VscodeCli } from './vscodeCli';
@@ -65,6 +66,16 @@ const host: Host = {
     for (let dir = path.resolve(start); ; dir = path.dirname(dir)) {
       if (fs.existsSync(path.join(dir, '.git'))) return dir;
       if (path.dirname(dir) === dir) return undefined;
+    }
+  },
+  cliTarball: async (origin) => {
+    // HEAD, so nothing is downloaded; a gzip answer, since a dev frontend answers every path with its index.html.
+    const url = cliTarballUrl(origin);
+    try {
+      const res = await fetch(url, { method: 'HEAD', redirect: 'error', signal: AbortSignal.timeout(5000) });
+      return res.ok && /gzip|octet-stream/.test(res.headers.get('content-type') ?? '') ? url : undefined;
+    } catch {
+      return undefined;
     }
   },
   openFolder: async (folder) => {
