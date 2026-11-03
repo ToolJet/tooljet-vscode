@@ -15,8 +15,10 @@ The extension is not on a marketplace yet. Install the `.vsix`:
 Build it yourself with `npm ci && npm run package` (it lands in `dist/`).
 
 You also need the ToolJet CLI with the Code mode commands (`tooljet app ...`, `tooljet auth login`). The extension
-offers to install it with `npm i -g @tooljet/cli` when it is missing, in a terminal you can watch, and only if you
-agree. To use another build, set **ToolJet: Cli Path** (`tooljet.cliPath`) in your user settings.
+offers to install it with `npm i -g @tooljet/cli@latest` when it is missing, in a terminal you can watch, and only if
+you agree. When the CLI is too old (no `app` commands), it offers **Update the CLI** and **Choose a CLI...**: the second
+picks a `tooljet` executable, for example `cli/bin/run` in a ToolJet checkout, and saves it as **ToolJet: Cli Path**
+(`tooljet.cliPath`, a user setting).
 
 ## Open an app from ToolJet
 
@@ -29,29 +31,34 @@ vscode://tooljet.tooljet/open?instance=https%3A%2F%2Ftooljet.example.com&app=421
 The extension then:
 
 1. shows the instance and app and asks you to confirm before contacting anything;
-2. checks the `tooljet` CLI is installed (and offers to install it);
-3. runs `tooljet auth login --url <instance>` in a terminal if the CLI is not signed in to that instance: you approve
-   the code in your browser, and the CLI stores the token;
-4. asks for a parent folder (it remembers the last one) and a folder name;
-5. runs `tooljet app clone`, `tooljet app checkout <version>` when the link names one, and `tooljet app install`
-   (npm, pnpm or yarn with install scripts off);
+2. checks the `tooljet` CLI is installed and new enough (and offers to install, update or choose one);
+3. runs `tooljet auth login --url <server>` in a terminal if the CLI is not signed in to ToolJet's server (the link's
+   `api`, else its `instance`): you approve the code in your browser, and the CLI stores the token. If that address
+   has no browser sign-in (a frontend served apart from its API), it asks for the server address;
+4. asks for a parent folder and a folder name. The first time it starts in `~/ToolJet apps`, then in the last folder
+   you used; a folder inside a Git repository needs confirming; the full path of the clone shows as you type the name;
+5. runs `tooljet app clone`, `tooljet app checkout <version>` when the link names one, `tooljet app source-pull` (the
+   app's code ToolJet stores, when the CLI has the command) and `tooljet app install` (npm, pnpm or yarn with install
+   scripts off);
 6. opens the folder in a new window and starts the live preview (`tooljet app dev`) in a terminal there.
 
-If the app is already cloned into a folder this editor knows, it offers to open that folder instead. If the app's
-code isn't saved in ToolJet (it lives in your repository), the extension clones and opens the project but does not
-start the live preview, so it never replaces your live preview with the starter template.
+If the app is already cloned into a folder this editor knows, it offers to open that folder instead. The live
+preview starts only when the folder holds the app's code: code the ToolJet editor owns, or a new app. When the app's
+code isn't saved in ToolJet, or its Git repository owns it, the extension clones and opens the project but does not
+start the live preview, so it never replaces your live preview with the starter template or a copy.
 
 ### Link format
 
 ```
-<scheme>://tooljet.tooljet/open?instance=<origin>&app=<app id>[&version=<version name>][&folder=<folder name>]
+<scheme>://tooljet.tooljet/open?instance=<origin>&app=<app id>[&api=<origin>][&version=<version name>][&folder=<folder name>]
 ```
 
 | Parameter | Required | Rules |
 |---|---|---|
 | `scheme` | | `vscode`, `vscode-insiders`, `cursor` or `windsurf` (the editor that should open it) |
-| `instance` | yes | the ToolJet **API** origin: `https://host[:port]`, or `http://` only for `localhost`, `127.x.x.x` or `[::1]`; no user, path, query or fragment |
+| `instance` | yes | the ToolJet origin the link came from: `https://host[:port]`, or `http://` only for `localhost`, `127.x.x.x` or `[::1]`; no user, path, query or fragment |
 | `app` | yes | the app id, a UUID |
+| `api` | no | ToolJet's server (API) origin when it is not `instance` (a separate server URL, or a local stack's API port); same rules as `instance`. The CLI signs in to this one |
 | `version` | no | a version name to check out (letters, digits, space, `.`, `_`, `-`; up to 64) |
 | `folder` | no | the suggested folder name (letters, digits, `.`, `_`, `-`; up to 64; no `..`) |
 
@@ -60,13 +67,16 @@ Any other parameter, a repeated one, a fragment, or anything that looks like a c
 
 ### What the ToolJet "Open locally" panel should link to
 
-Use the same API origin the panel already shows in its `tooljet auth login --url` line (`instanceOrigin()` in
-`OpenLocally.jsx`), and the folder name it already derives from the app name:
+The page's own origin as `instance`, the API origin the panel already shows in its `tooljet auth login --url` line
+(`instanceOrigin()` in `OpenLocally.jsx`) as `api` when it differs, and the folder name it derives from the app name:
 
 ```js
-const link = (scheme) =>
-  `${scheme}://tooljet.tooljet/open?` +
-  new URLSearchParams({ instance: instanceOrigin(), app: appId, folder }).toString();
+const link = (scheme) => {
+  const params = new URLSearchParams({ instance: window.location.origin, app: appId });
+  if (instanceOrigin() !== window.location.origin) params.set('api', instanceOrigin());
+  params.set('folder', folder);
+  return `${scheme}://tooljet.tooljet/open?${params}`;
+};
 // scheme: 'vscode' | 'cursor' | 'windsurf'
 ```
 
