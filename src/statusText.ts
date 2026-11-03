@@ -30,18 +30,18 @@ const md = (s: string) => s.replace(/([\\`*_{}[\]()#+\-.!|<>])/g, '\\$1');
 export function describeStatus(project: StatusProject, dev: DevStatus | undefined, now: Date) {
   const where = project.instance ? ` · ${hostOf(project.instance)}` : '';
   let devText = '';
-  let devLine = 'Dev: not running';
+  let devLine = 'Live preview: off';
   let isError = false;
   switch (dev?.state) {
     case 'starting':
       devText = ' $(loading~spin)';
-      devLine = 'Dev: starting';
+      devLine = 'Live preview: starting';
       break;
     case 'running': {
       const errors = dev.findings.filter((f) => f.severity === 'error').length;
       const warnings = dev.findings.length - errors;
       devText = dev.lastUpload ? ` $(pass) ${ago(dev.lastUpload, now)}` : ' $(sync~spin)';
-      devLine = dev.lastUpload ? `Dev: running, last upload ${ago(dev.lastUpload, now)} (built in ${dev.lastBuildMs})` : 'Dev: running, first build';
+      devLine = dev.lastUpload ? `Live preview: on, updated ${ago(dev.lastUpload, now)} (built in ${dev.lastBuildMs})` : 'Live preview: on, first build';
       if (warnings) {
         devText += ` $(warning) ${warnings}`;
         devLine += `, ${warnings} warning${warnings === 1 ? '' : 's'}`;
@@ -50,12 +50,12 @@ export function describeStatus(project: StatusProject, dev: DevStatus | undefine
     }
     case 'error':
       isError = true;
-      devText = ' $(error) dev';
-      devLine = `Dev: ${dev.error ?? 'failed'}`;
+      devText = ' $(error) preview';
+      devLine = `Live preview: ${dev.error ?? 'failed'}`;
       break;
     case 'stopped':
       devText = ' $(debug-stop)';
-      devLine = 'Dev: stopped';
+      devLine = 'Live preview: stopped';
       break;
   }
   const lines = [

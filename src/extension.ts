@@ -136,7 +136,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
   const startDev = withProject(async (p) => {
     if (dev) {
-      const choice = await vscode.window.showInformationMessage('ToolJet dev is already running.', 'Restart', 'Show');
+      const choice = await vscode.window.showInformationMessage('Live preview is already on.', 'Restart', 'Show');
       if (choice === 'Show') return;
       if (choice !== 'Restart') return;
       dev.running.kill();
@@ -222,7 +222,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('tooljet.installAgentInstructions', withProject((p) => project.installAgentInstructions(p, deps))),
     vscode.commands.registerCommand('tooljet.showMenu', async () => {
       const items: (vscode.QuickPickItem & { command: string })[] = [
-        dev ? { label: '$(debug-stop) Stop dev', command: 'tooljet.stopDev' } : { label: '$(play) Start dev', command: 'tooljet.startDev' },
+        dev ? { label: '$(debug-stop) Stop live preview', command: 'tooljet.stopDev' } : { label: '$(play) Start live preview', command: 'tooljet.startDev' },
         { label: '$(cloud-download) Pull', description: 'types for queries, tables and routes', command: 'tooljet.pull' },
         { label: '$(checklist) Check', description: 'queries, routes and pages the code names', command: 'tooljet.check' },
         { label: '$(rocket) Publish', command: 'tooljet.publish' },

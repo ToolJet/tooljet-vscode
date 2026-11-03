@@ -37,7 +37,7 @@ test('status text: app, instance and dev state', () => {
   );
   const err = describeStatus(project, { state: 'error', error: 'build failed: x', findings: [] }, now);
   assert.equal(err.isError, true);
-  assert.match(err.tooltip, /Dev: build failed: x/);
+  assert.match(err.tooltip, /Live preview: build failed: x/);
   const warn = describeStatus(project, { state: 'running', lastUpload: '2026-11-02T10:09:50Z', lastBuildMs: '1s', findings: [{ severity: 'warning', file: 'f', line: 1, message: 'm', source: 's' }] }, now);
   assert.equal(warn.text, '$(tools) Orders · localhost:3055 $(pass) just now $(warning) 1');
   assert.match(warn.tooltip, /version v2/);

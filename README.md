@@ -1,6 +1,6 @@
 # ToolJet for VS Code, Cursor and Windsurf
 
-Work on a ToolJet **Code mode** app in your editor: open it from ToolJet with one click, keep the dev loop running,
+Work on a ToolJet **Code mode** app in your editor: open it from ToolJet with one click, keep its live preview running,
 and check, pull and publish without leaving the editor. The extension drives the `tooljet` CLI; it holds no
 credentials of its own.
 
@@ -35,11 +35,11 @@ The extension then:
 4. asks for a parent folder (it remembers the last one) and a folder name;
 5. runs `tooljet app clone`, `tooljet app checkout <version>` when the link names one, and `tooljet app install`
    (npm, pnpm or yarn with install scripts off);
-6. opens the folder in a new window and starts `tooljet app dev` in a terminal there.
+6. opens the folder in a new window and starts the live preview (`tooljet app dev`) in a terminal there.
 
-If the app is already cloned into a folder this editor knows, it offers to open that folder instead. If the app is
-already in Code mode, its source lives in your repository rather than in ToolJet: the extension clones and opens the
-project but does not start dev, so it never replaces your dev build with the starter template.
+If the app is already cloned into a folder this editor knows, it offers to open that folder instead. If the app's
+code isn't saved in ToolJet (it lives in your repository), the extension clones and opens the project but does not
+start the live preview, so it never replaces your live preview with the starter template.
 
 ### Link format
 
@@ -80,14 +80,14 @@ All under **ToolJet:** in the Command Palette, and in the menu behind the status
 | Command | Runs |
 |---|---|
 | Open app... | the open flow above, from an instance address and app id you type |
-| Start dev / Stop dev | `tooljet app dev` in a terminal; Ctrl+C in it stops it too |
+| Start live preview / Stop live preview | `tooljet app dev` in a terminal; Ctrl+C in it stops it too |
 | Pull | `tooljet app pull` (types for queries, tables and routes) |
 | Check | `tooljet app check`; problems go to the Problems panel |
 | Publish | asks for a version (`1.2.0`) and a confirmation, then `tooljet app publish -v <version>` |
 | Install agent instructions | `tooljet skill install` (CLAUDE.md, AGENTS.md, `.cursor/rules/tooljet.mdc`) |
 
-The status bar shows the app, the instance it came from, and the dev loop: starting, running with the time of the
-last upload, warnings, or the last error. Dev warnings and TypeScript errors also go to the Problems panel.
+The status bar shows the app, the instance it came from, and the live preview: starting, on with the time of the
+last update, warnings, or the last error. Live preview warnings and TypeScript errors also go to the Problems panel.
 
 Before each command that talks to ToolJet, the extension checks the CLI's current login is the instance this folder
 came from (the CLI's app commands use its default login), and offers to sign in again if it is not.
@@ -106,7 +106,7 @@ came from (the CLI's app commands use its default login), and offers to sign in 
 - **No install scripts.** Dependencies install through `tooljet app install`, which turns lifecycle scripts off. The
   CLI itself is installed only on your consent, in a visible terminal.
 - **Trusted workspaces only.** The commands build and run the app's code, so in Restricted Mode they do nothing; a
-  window opened from a link starts dev once you trust the folder.
+  window opened from a link starts the live preview once you trust the folder.
 - **The CLI path is a machine setting.** A workspace's `.vscode/settings.json` cannot point the extension at another
   executable.
 - The links log (Output → ToolJet) records why a link was refused, never the link itself.

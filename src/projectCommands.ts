@@ -102,7 +102,7 @@ export async function startDev(project: Project, deps: Deps, onStatus: (status: 
   onStatus(parser.status);
   const running = deps.cli.start(['app', 'dev'], {
     cwd: project.root,
-    title: 'ToolJet: dev',
+    title: 'ToolJet: live preview',
     visible: true,
     onOutput: (chunk) => parser.feed(chunk),
   });

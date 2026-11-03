@@ -53,9 +53,9 @@ export async function run(): Promise<void> {
   await vscode.commands.executeCommand('tooljet.pull');
   await vscode.commands.executeCommand('tooljet.installAgentInstructions');
 
-  // Dev: runs in a terminal of its own and stops on command.
+  // Live preview: runs in a terminal of its own and stops on command.
   await vscode.commands.executeCommand('tooljet.startDev');
-  await wait('dev terminal', () => vscode.window.terminals.some((t) => t.name === 'ToolJet: dev'));
+  await wait('live preview terminal', () => vscode.window.terminals.some((t) => t.name === 'ToolJet: live preview'));
   await wait('dev call', () => calls().includes('app dev'));
   await new Promise((r) => setTimeout(r, 800));
   await vscode.commands.executeCommand('tooljet.stopDev');

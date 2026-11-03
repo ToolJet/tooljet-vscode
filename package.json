@@ -1,7 +1,7 @@
 {
   "name": "tooljet",
   "displayName": "ToolJet",
-  "description": "Open ToolJet Code mode apps from the browser, run the dev loop, check and publish from VS Code, Cursor and Windsurf.",
+  "description": "Open ToolJet Code mode apps from the browser, run a live preview, check and publish from VS Code, Cursor and Windsurf.",
   "version": "0.1.0",
   "publisher": "tooljet",
   "license": "AGPL-3.0-only",
@@ -48,12 +48,12 @@
       },
       {
         "command": "tooljet.startDev",
-        "title": "Start dev",
+        "title": "Start live preview",
         "category": "ToolJet"
       },
       {
         "command": "tooljet.stopDev",
-        "title": "Stop dev",
+        "title": "Stop live preview",
         "category": "ToolJet"
       },
       {
