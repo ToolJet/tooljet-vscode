@@ -113,3 +113,20 @@ test('parseInstance is usable on its own', () => {
   assert.deepEqual(parseInstance('https://t.example.com'), { ok: true, origin: 'https://t.example.com' });
   assert.equal(parseInstance('nope').ok, false);
 });
+
+test('api: an optional server origin, checked like the instance, dropped when it is the instance', () => {
+  const q = (extra: string) => `instance=http%3A%2F%2Flocalhost%3A8120&app=421df0e7-861a-43fd-9b31-fa67f6649dfa${extra}`;
+  const ok = parseOpenUri('/open', q('&api=http%3A%2F%2Flocalhost%3A3055'));
+  assert.deepEqual(ok.ok && ok.value, { instance: 'http://localhost:8120', api: 'http://localhost:3055', appId: '421df0e7-861a-43fd-9b31-fa67f6649dfa' });
+  const same = parseOpenUri('/open', q('&api=http%3A%2F%2Flocalhost%3A8120%2F'));
+  assert.equal(same.ok && same.value.api, undefined);
+  for (const bad of ['http%3A%2F%2Fapi.example.com', 'https%3A%2F%2Fapi.example.com%2Fapi', 'javascript%3Aalert(1)']) {
+    const r = parseOpenUri('/open', q(`&api=${bad}`));
+    assert.equal(r.ok, false, bad);
+  }
+  assert.equal(parseOpenUri('/open', q('&api=https%3A%2F%2Fa.example.com&api=https%3A%2F%2Fb.example.com')).ok, false);
+  assert.equal(
+    buildOpenUri('vscode', { instance: 'http://localhost:8120', api: 'http://localhost:3055', appId: '421df0e7-861a-43fd-9b31-fa67f6649dfa' }),
+    'vscode://tooljet.tooljet/open?instance=http%3A%2F%2Flocalhost%3A8120&app=421df0e7-861a-43fd-9b31-fa67f6649dfa&api=http%3A%2F%2Flocalhost%3A3055'
+  );
+});

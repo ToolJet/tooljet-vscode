@@ -1,18 +1,23 @@
 /*
   The link the ToolJet "Open locally" panel opens:
 
-    vscode://tooljet.tooljet/open?instance=<origin>&app=<app id>[&version=<name>][&folder=<name>]
+    vscode://tooljet.tooljet/open?instance=<origin>&app=<app id>[&api=<origin>][&version=<name>][&folder=<name>]
 
   (cursor:// and windsurf:// reach the same handler). Anything can open such a link, a web page included, so it is
-  parsed strictly: only these four parameters, each once, and nothing that looks like a credential. The extension
+  parsed strictly: only these five parameters, each once, and nothing that looks like a credential. The extension
   never takes a token from a link: sign-in is always `tooljet auth login`, approved in the browser.
 */
 
 export const OPEN_PATH = '/open';
 
 export interface OpenRequest {
-  /** The ToolJet API origin, normalised (`https://host[:port]`, no trailing slash). */
+  /** The ToolJet origin the link came from, normalised (`https://host[:port]`, no trailing slash). */
   instance: string;
+  /**
+   * The origin of ToolJet's server (its API), when it is not `instance`: a separate server URL, or a local stack whose
+   * frontend and API are on two ports. The CLI signs in to this one.
+   */
+  api?: string;
   appId: string;
   version?: string;
   /** Suggested folder name for the clone. */
@@ -21,7 +26,7 @@ export interface OpenRequest {
 
 export type ParseResult = { ok: true; value: OpenRequest } | { ok: false; error: string };
 
-const ALLOWED = new Set(['instance', 'app', 'version', 'folder']);
+const ALLOWED = new Set(['instance', 'app', 'api', 'version', 'folder']);
 
 // A parameter name or value that looks like it carries a secret. Checked before anything else, so such a link is
 // refused as a whole and never half-used.
@@ -84,6 +89,10 @@ export function parseOpenUri(path: string, query: string, fragment = ''): ParseR
   if (!instance.ok) return instance;
   if (!UUID.test(appId)) return { ok: false, error: 'The app id is not a UUID.' };
 
+  const apiRaw = seen.get('api');
+  const api = apiRaw === undefined ? undefined : parseInstance(apiRaw);
+  if (api && !api.ok) return { ok: false, error: api.error.replace(/^The instance/, 'The server address') };
+
   const version = seen.get('version');
   if (version !== undefined && !VERSION.test(version)) return { ok: false, error: 'The version name has characters ToolJet links do not use.' };
   const folder = seen.get('folder');
@@ -93,13 +102,20 @@ export function parseOpenUri(path: string, query: string, fragment = ''): ParseR
 
   return {
     ok: true,
-    value: { instance: instance.origin, appId: appId.toLowerCase(), ...(version ? { version } : {}), ...(folder ? { folder } : {}) },
+    value: {
+      instance: instance.origin,
+      appId: appId.toLowerCase(),
+      ...(api?.ok && api.origin !== instance.origin ? { api: api.origin } : {}),
+      ...(version ? { version } : {}),
+      ...(folder ? { folder } : {}),
+    },
   };
 }
 
 /** Builds the link, as the ToolJet "Open locally" panel should. `scheme` is vscode, cursor or windsurf. */
 export function buildOpenUri(scheme: 'vscode' | 'cursor' | 'windsurf', req: OpenRequest): string {
   const q = new URLSearchParams({ instance: req.instance, app: req.appId });
+  if (req.api) q.set('api', req.api);
   if (req.version) q.set('version', req.version);
   if (req.folder) q.set('folder', req.folder);
   return `${scheme}://tooljet.tooljet${OPEN_PATH}?${q.toString()}`;
