@@ -41,7 +41,7 @@ test('stripAnsi removes colour codes', () => {
 });
 
 const devLines = {
-  ready: '\x1b[1;32m✓\x1b[0m Dev track for "Orders Desk" (4 queries typed). Watching frontend/src ...\n\n',
+  ready: '\x1b[1;32m✓\x1b[0m Live preview of "Orders Desk" is on (4 queries). Watching frontend/src ...\n\n',
   linked: '  \x1b[1;32m✓\x1b[0m Linked the app\'s code (2 route pages created). Open: http://localhost:8120/final/apps/abc/home\n',
   uploaded: (iso: string) => `  \x1b[1;32m✓\x1b[0m [${iso}] built in 412ms, uploaded (183 KB)\n`,
   warning: '  \x1b[1;33m⚠ Warning\x1b[0m : src/pages/Orders.tsx:14 query "listOrderz" does not exist in the app\n',
@@ -118,4 +118,10 @@ test('exit codes end the dev status', () => {
   crashed.exited(137);
   assert.equal(crashed.status.state, 'error');
   assert.match(crashed.status.error ?? '', /code 137/);
+});
+
+test('a CLI from before the terminology pass ("Dev track for") still counts as ready', () => {
+  const p = new DevOutputParser();
+  p.feed('\x1b[1;32m✓\x1b[0m Dev track for "Orders Desk" (4 queries typed). Watching frontend/src ...\n');
+  assert.equal(p.status.state, 'running');
 });

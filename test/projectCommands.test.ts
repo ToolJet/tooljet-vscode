@@ -100,7 +100,7 @@ test('start dev runs `tooljet app dev` visibly and reports its status as it goes
   let finish!: (r: { code: number; output: string }) => void;
   cli.streams.set('app dev', {
     chunks: [
-      '\x1b[1;32m✓\x1b[0m Dev track for "Orders" (2 queries typed). Watching frontend/src ...\n',
+      '\x1b[1;32m✓\x1b[0m Live preview of "Orders" is on (2 queries). Watching frontend/src ...\n',
       '  \x1b[1;33m⚠ Warning\x1b[0m : src/App.tsx:4 link to "/x" matches no route in app.json\n',
       '  \x1b[1;32m✓\x1b[0m [2026-11-02T09:30:00.000Z] built in 300ms, uploaded (120 KB)\n',
     ],

@@ -16,7 +16,7 @@ if (key === 'app check') {
   process.exit(1);
 }
 if (key === 'app dev') {
-  console.log(ok('Dev track for "Demo" (0 queries typed). Watching frontend/src ...\n'));
+  console.log(ok('Live preview of "Demo" is on (0 queries). Watching frontend/src ...\n'));
   setTimeout(() => console.log(`  ${ok(`[${new Date().toISOString()}] built in 120ms, uploaded (80 KB)`)}`), 300);
   process.on('SIGINT', () => process.exit(0));
   setInterval(() => {}, 1000);

@@ -119,7 +119,7 @@ export async function openFromLink(req: OpenRequest, deps: Deps, home: string): 
   const confirmed = await ui.ask(
     `Open a ToolJet app from ${req.instance}?`,
     `App ${req.appId}${version}.\n\nThe ToolJet CLI will sign in to this instance if needed, clone the app into a folder ` +
-      'you choose and run its dev loop. Continue only if you clicked "Open in" on your own ToolJet instance.',
+      'you choose and start its live preview. Continue only if you clicked "Open in" on your own ToolJet instance.',
     ['Open']
   );
   if (confirmed !== 'Open') return 'cancelled';
@@ -176,10 +176,10 @@ export async function openFromLink(req: OpenRequest, deps: Deps, home: string): 
 
   // An app already in Code mode keeps its source in the developer's repository, not in ToolJet: the clone is the
   // starter template, and starting dev from it would replace the developer's dev build with that template.
-  const sourceElsewhere = /already in Code mode/i.test(stripAnsi(clone.output));
+  const sourceElsewhere = /already in Code mode|code isn't saved in ToolJet/i.test(stripAnsi(clone.output));
   if (sourceElsewhere) {
     ui.warn(
-      "This app is already in Code mode and its source is not stored in ToolJet. Bring the source from your repository into the new folder's frontend/, then run \"ToolJet: Start dev\"."
+      "This app's code isn't saved in ToolJet. Copy it from your repository into the new folder's frontend/, then run \"ToolJet: Start live preview\"."
     );
   } else {
     await store.setPendingDev(folder);

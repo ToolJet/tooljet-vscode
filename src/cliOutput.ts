@@ -95,7 +95,7 @@ export interface DevStatus {
   editorUrl?: string;
 }
 
-const DEV_READY = /^✓ Dev track for /;
+const DEV_READY = /^✓ (Live preview of |Dev track for )/;
 const DEV_UPLOADED = /^✓ \[([0-9T:.\-Z]+)\] built in (\S+), uploaded/;
 const DEV_LINKED = /^✓ Linked the app's code .*Open: (\S+)/;
 const DEV_WARNING = /^⚠ Warning : (.*)$/;
@@ -152,7 +152,7 @@ export class DevOutputParser {
           file: toProjectPath(fm[1], 'frontend'),
           line: Number(fm[2]),
           message: fm[4],
-          source: 'tooljet dev',
+          source: 'tooljet live preview',
         });
       }
       return;
@@ -164,7 +164,7 @@ export class DevOutputParser {
         line: Number(m[2] ?? m[4]),
         column: Number(m[3] ?? m[5]),
         message: m[7],
-        source: 'tooljet dev (tsc)',
+        source: 'tooljet live preview (tsc)',
         code: m[6],
       };
       // The report follows its "not uploaded" line, which already ended the cycle: add to the shown set.

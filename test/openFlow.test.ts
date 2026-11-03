@@ -105,17 +105,20 @@ test('checks out the requested version after cloning', async () => {
   assert.equal(cli.find('app checkout')?.cwd, '/home/me/apps/o');
 });
 
-test('does not start dev for an app whose Code mode source lives in a repository', async () => {
-  const { deps, cli, ui, store, opened } = makeDeps({ logins: { default: INSTANCE } });
-  cli.reply(`app clone ${APP} o`, {
-    code: 0,
-    output: '✓ Cloned "Orders" into o/ (3 queries, 2 routes)\nThe app is already in Code mode: its source is not stored in ToolJet; bring it from your repository.\n',
+for (const notice of [
+  "This app's code isn't saved in ToolJet. Copy it from your repository into frontend/.",
+  // The wording of CLIs before the terminology pass.
+  'The app is already in Code mode: its source is not stored in ToolJet; bring it from your repository.',
+]) {
+  test(`does not start the live preview for an app whose code lives in a repository: ${notice.slice(0, 30)}`, async () => {
+    const { deps, cli, ui, store, opened } = makeDeps({ logins: { default: INSTANCE } });
+    cli.reply(`app clone ${APP} o`, { code: 0, output: `✓ Cloned "Orders" into o/ (3 queries, 2 routes)\n${notice}\n` });
+    assert.equal(await openFromLink({ ...req, folder: 'o' }, deps, HOME), 'cloned-no-dev');
+    assert.equal(store.pending, undefined);
+    assert.deepEqual(opened, ['/home/me/apps/o']);
+    assert.match(ui.messages.find((m) => m.level === 'warn')!.text, /code isn't saved in ToolJet.*Start live preview/);
   });
-  assert.equal(await openFromLink({ ...req, folder: 'o' }, deps, HOME), 'cloned-no-dev');
-  assert.equal(store.pending, undefined);
-  assert.deepEqual(opened, ['/home/me/apps/o']);
-  assert.match(ui.messages.find((m) => m.level === 'warn')!.text, /source is not stored in ToolJet/);
-});
+}
 
 test('a failed clone stops before opening anything', async () => {
   const { deps, cli, ui, opened, store } = makeDeps({ logins: { default: INSTANCE } });
