@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.3
+
+- A CLI from before Code mode (npm's 0.0.14, which has only `plugin` and `info`) now gets **Your ToolJet CLI is out of date**, and one click installs the CLI the server serves, replacing the older `tooljet`.
+- When no server is known (a CLI that old is not signed in anywhere), or the server serves no CLI, **Enter server address** finds one, since npm's latest may be too old as well.
+
 ## 0.1.2
 
 - **Install** and **Update the CLI** install the CLI the ToolJet server serves (`<server>/api/code-mode/cli/tooljet-cli.tgz`, built with that server, so its Code mode commands match), and use npm's `@tooljet/cli@latest` only when the server has none.

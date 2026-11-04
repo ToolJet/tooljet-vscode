@@ -54,12 +54,14 @@ const probeCli = async (deps: Deps, cwd: string): Promise<CliState> => {
 };
 
 export const CHOOSE_CLI = 'Choose a CLI...';
+export const ENTER_SERVER = 'Enter server address';
 
 /**
  * Checks the CLI is installed and has the `app` and `auth login` commands. When it is missing or too old, offers to
  * install or update it (npm, in a terminal the user can watch) or to pick another `tooljet` executable, and keeps
  * offering both until the CLI is good or the user gives up. The install comes from `server` when that ToolJet server
- * serves the CLI it was built with, whose commands match it; else from npm.
+ * serves the CLI it was built with, whose commands match it; else from npm. npm's latest can be older than Code mode, and
+ * a CLI that old cannot sign in, so without a server that serves one it offers to enter a server's address first.
  */
 export async function ensureCli(deps: Deps, cwd: string, server?: string): Promise<boolean> {
   if (verified.has(deps.cli)) return true;
@@ -68,11 +70,12 @@ export async function ensureCli(deps: Deps, cwd: string, server?: string): Promi
     verified.add(deps.cli);
     return true;
   }
-  const tarball = server ? await deps.host.cliTarball(server).catch(() => undefined) : undefined;
-  const spec = tarball ?? NPM_CLI_PACKAGE;
-  const from = tarball ? server : 'npm';
+  let source = server;
+  let tarball = source ? await deps.host.cliTarball(source).catch(() => undefined) : undefined;
   let after: 'install' | 'choose' | undefined;
   while (state !== 'ok') {
+    const spec = tarball ?? NPM_CLI_PACKAGE;
+    const from = tarball ? source : 'npm';
     const install = state === 'missing' ? 'Install' : 'Update the CLI';
     const message =
       after === 'install'
@@ -85,16 +88,42 @@ export async function ensureCli(deps: Deps, cwd: string, server?: string): Promi
             : 'That ToolJet CLI does not have the Code mode commands.'
           : state === 'missing'
             ? 'The ToolJet CLI is not installed.'
-            : 'This ToolJet CLI is too old for Code mode apps.';
+            : 'Your ToolJet CLI is out of date.';
     const detail =
       after === 'install'
         ? 'Choose a ToolJet CLI that has the "app" commands (for example one built from the ToolJet repository\'s cli/bin/run), or restart the editor if the PATH changed.'
-        : `${install === 'Install' ? 'Install' : 'Update'} it with "npm i -g ${spec}" in a terminal you can watch` +
-          (tarball ? ` (the CLI ${server} was built with), ` : ', ') +
+        : (state === 'old' ? 'It does not have the commands Code mode apps need. ' : '') +
+          `${install === 'Install' ? 'Install' : 'Update'} it with "npm i -g ${spec}" in a terminal you can watch` +
+          (tarball ? ` (the CLI ${source} was built with), ` : ', ') +
+          (state === 'old' ? 'which replaces the older tooljet, ' : '') +
+          (tarball ? '' : `enter the address of a ToolJet server to install the CLI it serves, `) +
           'or choose a tooljet executable you already have. Your choice is saved as the "tooljet.cliPath" setting.';
-    const actions = after === 'install' ? [CHOOSE_CLI] : [install, CHOOSE_CLI];
+    const actions = tarball
+      ? after === 'install'
+        ? [CHOOSE_CLI]
+        : [install, CHOOSE_CLI]
+      : after === 'install'
+        ? state === 'missing'
+          ? [CHOOSE_CLI]
+          : [ENTER_SERVER, CHOOSE_CLI]
+        : source
+          ? [install, ENTER_SERVER, CHOOSE_CLI]
+          : [ENTER_SERVER, install, CHOOSE_CLI];
     const choice = await deps.ui.ask(message, detail, actions);
-    if (choice === install) {
+    if (choice === ENTER_SERVER) {
+      const entered = await deps.ui.inputServerAddress(source ?? '', (value) => {
+        const parsed = parseInstance(value.trim().replace(/\/+$/, ''));
+        return parsed.ok ? undefined : parsed.error;
+      });
+      if (!entered) return false;
+      const parsed = parseInstance(entered.trim().replace(/\/+$/, ''));
+      if (!parsed.ok) return false;
+      source = parsed.origin;
+      tarball = await deps.host.cliTarball(source).catch(() => undefined);
+      if (!tarball) deps.ui.warn(`${source} does not serve the ToolJet CLI.`);
+      after = undefined;
+      continue;
+    } else if (choice === install) {
       const installed = await deps.cli.installCli(spec);
       if (installed.code !== 0) {
         deps.ui.error(`Installing the ToolJet CLI failed: ${lastError(installed)}`);

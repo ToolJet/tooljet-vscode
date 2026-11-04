@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
 
-import { openFromLink } from '../src/openFlow';
+import { ensureCli, openFromLink } from '../src/openFlow';
+import { cliTarballUrl } from '../src/spawnSpec';
 import { makeDeps } from './fakes';
 
 const APP = '421df0e7-861a-43fd-9b31-fa67f6649dfa';
@@ -110,7 +111,7 @@ test("installs the CLI the instance serves (its server's, when the link names on
 test('treats a CLI without the app commands as too old', async () => {
   const { deps, cli, ui } = makeDeps({ logins: { default: INSTANCE } });
   cli.reply('app clone --help', { code: 2, output: 'command app:clone not found' });
-  ui.answer('This ToolJet CLI is too old', undefined);
+  ui.answer('Your ToolJet CLI is out of date', undefined);
   assert.equal(await openFromLink(req, deps, HOME), 'cancelled');
   assert.deepEqual(cli.work, []);
 });
@@ -127,18 +128,43 @@ test('a too-old CLI can be updated, and when npm has no newer one, another CLI c
   // Only the CLI the user picks has the app commands.
   cli.reply('app clone --help', () => (deps.cli === cli ? { code: 2, output: 'command app:clone not found' } : { code: 0, output: '' }));
   ui.cliPath = '/src/ToolJet/cli/bin/run';
-  ui.answer('This ToolJet CLI is too old', 'Update the CLI').answer('The ToolJet CLI from npm', 'Choose a CLI...');
+  ui.answer('Your ToolJet CLI is out of date', 'Update the CLI').answer('The ToolJet CLI from npm', 'Choose a CLI...');
   assert.equal(await openFromLink({ ...req, folder: 'o' }, deps, HOME), 'cloned');
   assert.equal(cli.installs, 1);
   assert.deepEqual(cliPaths, ['/src/ToolJet/cli/bin/run']);
   assert.ok(ui.asked.includes('The ToolJet CLI from npm does not have the Code mode commands yet.'));
 });
 
+test('the npm CLI from before Code mode: one click installs the CLI the server serves, and says it replaces the old one', async () => {
+  const { deps, cli, ui } = makeDeps({ logins: { default: INSTANCE }, servesCli: [INSTANCE] });
+  let upgraded = false;
+  cli.reply('app clone --help', () => (upgraded ? { code: 0, output: '' } : { code: 2, output: 'command app:clone not found' }));
+  const install = cli.installCli.bind(cli);
+  cli.installCli = (spec: string) => ((upgraded = true), install(spec));
+  ui.answer('Your ToolJet CLI is out of date', 'Update the CLI');
+  assert.equal(await openFromLink({ ...req, folder: 'o' }, deps, HOME), 'cloned');
+  assert.deepEqual(cli.installedFrom, [cliTarballUrl(INSTANCE)]);
+  assert.ok(ui.details.some((d) => d.includes(`npm i -g ${cliTarballUrl(INSTANCE)}`) && d.includes('replaces the older tooljet')));
+});
+
+test('a project with no known server asks for one first: a CLI that old is not signed in anywhere', async () => {
+  const project = { root: '/w/orders', app: { appId: 'a1' } } as any;
+  const { deps, cli, ui } = makeDeps({ servesCli: [INSTANCE] });
+  let upgraded = false;
+  cli.reply('app clone --help', () => (upgraded ? { code: 0, output: '' } : { code: 2, output: 'command app:clone not found' }));
+  const install = cli.installCli.bind(cli);
+  cli.installCli = (spec: string) => ((upgraded = true), install(spec));
+  ui.serverAddress = INSTANCE;
+  assert.equal(await ensureCli(deps, project.root), true);
+  assert.ok(ui.asked.every((m) => m === 'Your ToolJet CLI is out of date.'));
+  assert.deepEqual(cli.installedFrom, [cliTarballUrl(INSTANCE)]);
+});
+
 test('a chosen CLI that is still too old is reported, and choosing can be given up', async () => {
   const { deps, cli, ui, cliPaths } = makeDeps({ logins: { default: INSTANCE } });
   cli.reply('app clone --help', { code: 2, output: 'command app:clone not found' });
   ui.cliPath = '/opt/old/tooljet';
-  ui.answer('This ToolJet CLI is too old', 'Choose a CLI...').answer('That ToolJet CLI does not have', undefined);
+  ui.answer('Your ToolJet CLI is out of date', 'Choose a CLI...').answer('That ToolJet CLI does not have', undefined);
   assert.equal(await openFromLink(req, deps, HOME), 'cancelled');
   assert.equal(cli.installs, 0);
   assert.deepEqual(cliPaths, ['/opt/old/tooljet']);

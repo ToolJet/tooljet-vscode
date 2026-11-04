@@ -8,16 +8,16 @@ credentials of its own.
 
 The extension is not on a marketplace yet. Install the `.vsix`:
 
-- **VS Code**: Extensions view → `...` → *Install from VSIX...*, or `code --install-extension tooljet-0.1.2.vsix`
-- **Cursor**: `cursor --install-extension tooljet-0.1.2.vsix`, or drag the file into the Extensions view
-- **Windsurf**: `windsurf --install-extension tooljet-0.1.2.vsix`, or *Install from VSIX...* in the Extensions view
+- **VS Code**: Extensions view → `...` → *Install from VSIX...*, or `code --install-extension tooljet-0.1.3.vsix`
+- **Cursor**: `cursor --install-extension tooljet-0.1.3.vsix`, or drag the file into the Extensions view
+- **Windsurf**: `windsurf --install-extension tooljet-0.1.3.vsix`, or *Install from VSIX...* in the Extensions view
 
 Build it yourself with `npm ci && npm run package` (it lands in `dist/`).
 
 You also need the ToolJet CLI with the Code mode commands (`tooljet app ...`, `tooljet auth login`). The extension
 offers to install it when it is missing, in a terminal you can watch, and only if you agree: from the ToolJet server
 you are opening (`npm i -g <server>/api/code-mode/cli/tooljet-cli.tgz`, the CLI that server was built with) when it
-serves one, else `npm i -g @tooljet/cli@latest`. When the CLI is too old (no `app` commands), it offers **Update the CLI** and **Choose a CLI...**: the second
+serves one, else `npm i -g @tooljet/cli@latest`. When the CLI is out of date (no `app` commands, like npm's 0.0.14), it offers **Update the CLI**, which replaces the older `tooljet`, and **Choose a CLI...**: the second
 picks a `tooljet` executable, for example `cli/bin/run` in a ToolJet checkout, and saves it as **ToolJet: Cli Path**
 (`tooljet.cliPath`, a user setting).
 
