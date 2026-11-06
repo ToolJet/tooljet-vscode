@@ -31,8 +31,11 @@ export interface CliRunner {
 }
 
 export interface Ui {
-  /** A modal question; resolves to the chosen action or undefined when dismissed. */
-  ask(message: string, detail: string, actions: string[]): Promise<string | undefined>;
+  /**
+   * A modal question; resolves to the chosen action or undefined when dismissed. `warning` shows it as a warning
+   * (a server new to this computer, a program about to be installed from one).
+   */
+  ask(message: string, detail: string, actions: string[], options?: { warning?: boolean }): Promise<string | undefined>;
   pickParentFolder(defaultPath?: string): Promise<string | undefined>;
   /** `describe` says, for a valid name, where the clone goes. */
   inputFolderName(
@@ -61,7 +64,10 @@ export interface Store {
   setLastParentFolder(folder: string): Promise<void>;
   links(): LinkRecord[];
   setLink(link: LinkRecord): Promise<void>;
-  /** A folder opened from a link, whose new window should start `tooljet app dev`. */
+  /**
+   * A folder opened from a link, whose new window offers a "Start live preview" button. It never starts
+   * `tooljet app dev` by itself: that builds the app's code (its PostCSS config included) on this computer.
+   */
   setPendingDev(folder: string): Promise<void>;
   takePendingDev(folder: string): Promise<boolean>;
 }

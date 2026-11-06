@@ -12,6 +12,9 @@ export interface CliCall {
 
 type Reply = RunResult | ((call: CliCall) => RunResult);
 
+/** `tooljet app clone --help` of a CLI that has `--instance` (records a clone's instance, keeps the default login). */
+export const GOOD_CLONE_HELP: RunResult = { code: 0, output: 'FLAGS\n  --instance=<value>  Use this instance\'s stored login\n' };
+
 export class FakeCli implements CliRunner {
   calls: CliCall[] = [];
   installs = 0;
@@ -37,7 +40,7 @@ export class FakeCli implements CliRunner {
       for (const c of stream.chunks) options.onOutput?.(c);
       return { done: stream.result, kill: () => {} };
     }
-    const r = this.replies.get(key) ?? { code: 0, output: '' };
+    const r = this.replies.get(key) ?? (key === 'app clone --help' ? GOOD_CLONE_HELP : { code: 0, output: '' });
     return { done: Promise.resolve(typeof r === 'function' ? r(call) : r), kill: () => {} };
   }
 
@@ -86,9 +89,12 @@ export class FakeUi implements Ui {
     return this;
   }
 
-  async ask(message: string, detail: string, actions: string[]) {
+  /** The questions asked as warnings. */
+  warnings: string[] = [];
+  async ask(message: string, detail: string, actions: string[], options?: { warning?: boolean }) {
     this.asked.push(message);
     this.details.push(detail);
+    if (options?.warning) this.warnings.push(message);
     const key = Object.keys(this.answers).find((k) => message.startsWith(k));
     return key !== undefined ? this.answers[key] : actions[0];
   }

@@ -26,8 +26,8 @@ export const instanceOf = (project: Project, deps: Pick<Deps, 'host'>): string |
   project.instance ?? deps.host.defaultLoginOrigin();
 
 /**
- * The CLI's app commands use its default login, so before running one the default must be the instance this
- * project was opened from (another `tooljet auth login` elsewhere may have changed it).
+ * Before an app command, the CLI needs a login for the instance this project was opened from. The command then names
+ * that instance (`--instance`), so it never follows the CLI's default login to another one.
  */
 async function ready(project: Project, deps: Deps): Promise<boolean> {
   if (!(await ensureCli(deps, project.root, instanceOf(project, deps)))) return false;
@@ -39,9 +39,16 @@ async function ready(project: Project, deps: Deps): Promise<boolean> {
   return true;
 }
 
+/** `tooljet app <command>` for this project, naming the instance it was opened from. */
+const appArgs = (project: Project, ...args: string[]): string[] => [
+  'app',
+  ...args,
+  ...(project.instance ? ['--instance', project.instance] : []),
+];
+
 export async function pull(project: Project, deps: Deps): Promise<boolean> {
   if (!(await ready(project, deps))) return false;
-  const result = await deps.cli.start(['app', 'pull'], { cwd: project.root, title: 'ToolJet: pull', visible: false }).done;
+  const result = await deps.cli.start(appArgs(project, 'pull'), { cwd: project.root, title: 'ToolJet: pull', visible: false }).done;
   if (result.code === 0) deps.ui.info('Pulled the app: frontend/src/tooljet.gen.ts is up to date.');
   else deps.ui.error(`Pull failed: ${lastError(result)}`);
   return result.code === 0;
@@ -49,7 +56,7 @@ export async function pull(project: Project, deps: Deps): Promise<boolean> {
 
 export async function check(project: Project, deps: Deps): Promise<CheckResult | undefined> {
   if (!(await ready(project, deps))) return undefined;
-  const result = await deps.cli.start(['app', 'check'], { cwd: project.root, title: 'ToolJet: check', visible: false }).done;
+  const result = await deps.cli.start(appArgs(project, 'check'), { cwd: project.root, title: 'ToolJet: check', visible: false }).done;
   const parsed = parseCheckOutput(result.output, result.code ?? 1);
   const errors = parsed.findings.filter((f) => f.severity === 'error').length;
   const warnings = parsed.findings.length - errors;
@@ -76,7 +83,7 @@ export async function publish(project: Project, deps: Deps): Promise<boolean> {
     ['Publish']
   );
   if (confirmed !== 'Publish') return false;
-  const result = await deps.cli.start(['app', 'publish', '-v', version], { cwd: project.root, title: 'ToolJet: publish', visible: true }).done;
+  const result = await deps.cli.start(appArgs(project, 'publish', '-v', version), { cwd: project.root, title: 'ToolJet: publish', visible: true }).done;
   if (result.code === 0) deps.ui.info(`Published ${version}.`);
   else deps.ui.error(`Publish failed: ${lastError(result)}`);
   return result.code === 0;
@@ -100,7 +107,7 @@ export async function startDev(project: Project, deps: Deps, onStatus: (status: 
   if (!(await ready(project, deps))) return undefined;
   const parser = new DevOutputParser(onStatus);
   onStatus(parser.status);
-  const running = deps.cli.start(['app', 'dev'], {
+  const running = deps.cli.start(appArgs(project, 'dev'), {
     cwd: project.root,
     title: 'ToolJet: live preview',
     visible: true,

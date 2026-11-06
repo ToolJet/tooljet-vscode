@@ -1,3 +1,5 @@
+import { isLoopbackHost } from './uri';
+
 /*
   How a CLI run is spawned. On macOS and Linux the arguments go straight to the process (no shell), so nothing in
   an app id, folder or version name can be interpreted by a shell. Windows needs a shell to run the npm-installed
@@ -25,6 +27,19 @@ export function spawnSpec(executable: string, args: string[], platform: NodeJS.P
 /** npm's CLI, for an instance that does not serve its own (GET /api/code-mode/cli/tooljet-cli.tgz). */
 export const NPM_CLI_PACKAGE = '@tooljet/cli@latest';
 export const npmInstallCli = (spec: string = NPM_CLI_PACKAGE) => ['i', '-g', spec];
+
+/**
+ * Whether the CLI may be installed from this server: https, or plain http on this computer (a local stack). npm
+ * installs and runs what it downloads, so never over a connection anyone on the network can rewrite.
+ */
+export const tarballOriginAllowed = (origin: string): boolean => {
+  try {
+    const url = new URL(origin);
+    return url.protocol === 'https:' || (url.protocol === 'http:' && isLoopbackHost(url.hostname));
+  } catch {
+    return false;
+  }
+};
 
 /** Where a ToolJet server serves the CLI it was built with. */
 export const cliTarballUrl = (origin: string) => `${origin.replace(/\/+$/, '')}/api/code-mode/cli/tooljet-cli.tgz`;
