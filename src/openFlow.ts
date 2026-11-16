@@ -1,12 +1,17 @@
 import { CliRunner, Host, RunResult, Store, Ui } from './ports';
 import { stripAnsi } from './cliOutput';
-import { NPM_CLI_PACKAGE } from './spawnSpec';
+import { NPM_CLI_PACKAGE, tarballOriginAllowed } from './spawnSpec';
 import { OpenRequest, parseInstance } from './uri';
 
 /*
   "Open in VS Code" from the ToolJet editor: confirm the instance, make sure the CLI is there and signed in to that
   instance, clone the app into a folder the user picks, install its dependencies without install scripts, and open
-  it in a new window, which then starts `tooljet app dev`.
+  it in a new window, which offers to start `tooljet app dev`.
+
+  Any web page can open such a link and name any server, so a server this computer has never signed in to gets a
+  warning naming it in full, the CLI is never installed from it without a second confirmation naming the download,
+  signing in to it never changes the CLI's default login (the clone records its instance, and the CLI uses that
+  instance's login in that folder only), and nothing from it runs until the user starts the live preview.
 */
 
 export interface Deps {
@@ -23,9 +28,9 @@ export type Outcome =
   | 'failed'
   /** Opened a folder already linked to this app. */
   | 'opened-existing'
-  /** Cloned and opened; dev starts in the new window. */
+  /** Cloned and opened; the new window offers to start dev. */
   | 'cloned'
-  /** Cloned and opened, but dev was not started (the app's source is not in ToolJet). */
+  /** Cloned and opened, with no offer to start dev (the app's source is not in ToolJet). */
   | 'cloned-no-dev';
 
 const FOLDER_NAME = /^[A-Za-z0-9][\w.-]{0,63}$/;
@@ -45,34 +50,57 @@ const verified = new WeakSet<CliRunner>();
 
 type CliState = 'missing' | 'old' | 'ok';
 
+/*
+  A CLI is good when it has the app commands, sign-in, and `--instance`: that CLI records the instance a clone came
+  from and keeps the default login when it signs in to another, so a link's sign-in changes nothing outside the
+  folder it clones. An older one would make a link's server the login every terminal command uses.
+*/
 const probeCli = async (deps: Deps, cwd: string): Promise<CliState> => {
   const version = await run(deps, ['--version'], cwd, 'ToolJet: CLI version', false).catch(() => undefined);
   if (!version || version.code !== 0) return 'missing';
   const app = await run(deps, ['app', 'clone', '--help'], cwd, 'ToolJet: CLI check', false).catch(() => undefined);
   const auth = await run(deps, ['auth', 'login', '--help'], cwd, 'ToolJet: CLI check', false).catch(() => undefined);
-  return app?.code === 0 && auth?.code === 0 ? 'ok' : 'old';
+  return app?.code === 0 && auth?.code === 0 && /--instance\b/.test(stripAnsi(app.output)) ? 'ok' : 'old';
 };
 
 export const CHOOSE_CLI = 'Choose a CLI...';
+export const ENTER_SERVER = 'Enter server address';
+export const FROM_SERVER = "Install the server's CLI...";
+export const CONFIRM_SERVER_CLI = 'Install from this server';
+
+/** A server the CLI has a login for: one the user has signed in to from this computer. */
+const isKnownServer = (deps: Deps, origin: string | undefined): boolean => !!origin && deps.host.loginState(origin) !== 'none';
+
+/** The CLI tarball a server serves, when it may be installed from there at all (https, or a local stack). */
+const servedTarball = (deps: Deps, origin: string): Promise<string | undefined> =>
+  tarballOriginAllowed(origin) ? deps.host.cliTarball(origin).catch(() => undefined) : Promise.resolve(undefined);
 
 /**
  * Checks the CLI is installed and has the `app` and `auth login` commands. When it is missing or too old, offers to
  * install or update it (npm, in a terminal the user can watch) or to pick another `tooljet` executable, and keeps
  * offering both until the CLI is good or the user gives up. The install comes from `server` when that ToolJet server
- * serves the CLI it was built with, whose commands match it; else from npm.
+ * serves the CLI it was built with, whose commands match it; else from npm. npm's latest can be older than Code mode, and
+ * a CLI that old cannot sign in, so without a server that serves one it offers to enter a server's address first.
+ *
+ * Only a server the user has signed in to, or typed in here, is asked for its CLI up front. One that only a link
+ * named gets npm first, and its CLI only through FROM_SERVER and a second, warning confirmation naming the download.
  */
-export async function ensureCli(deps: Deps, cwd: string, server?: string): Promise<boolean> {
+export async function ensureCli(deps: Deps, cwd: string, server?: string, typed = false): Promise<boolean> {
   if (verified.has(deps.cli)) return true;
   let state = await probeCli(deps, cwd);
   if (state === 'ok') {
     verified.add(deps.cli);
     return true;
   }
-  const tarball = server ? await deps.host.cliTarball(server).catch(() => undefined) : undefined;
-  const spec = tarball ?? NPM_CLI_PACKAGE;
-  const from = tarball ? server : 'npm';
+  let source = server;
+  const trusted = typed || isKnownServer(deps, source);
+  let tarball = source && trusted ? await servedTarball(deps, source) : undefined;
+  // A server only a link named: its CLI is offered, never preferred.
+  let untrusted = source && !trusted && tarballOriginAllowed(source) ? source : undefined;
   let after: 'install' | 'choose' | undefined;
   while (state !== 'ok') {
+    const spec = tarball ?? NPM_CLI_PACKAGE;
+    const from = tarball ? source : 'npm';
     const install = state === 'missing' ? 'Install' : 'Update the CLI';
     const message =
       after === 'install'
@@ -85,16 +113,73 @@ export async function ensureCli(deps: Deps, cwd: string, server?: string): Promi
             : 'That ToolJet CLI does not have the Code mode commands.'
           : state === 'missing'
             ? 'The ToolJet CLI is not installed.'
-            : 'This ToolJet CLI is too old for Code mode apps.';
+            : 'Your ToolJet CLI is out of date.';
     const detail =
       after === 'install'
         ? 'Choose a ToolJet CLI that has the "app" commands (for example one built from the ToolJet repository\'s cli/bin/run), or restart the editor if the PATH changed.'
-        : `${install === 'Install' ? 'Install' : 'Update'} it with "npm i -g ${spec}" in a terminal you can watch` +
-          (tarball ? ` (the CLI ${server} was built with), ` : ', ') +
-          'or choose a tooljet executable you already have. Your choice is saved as the "tooljet.cliPath" setting.';
-    const actions = after === 'install' ? [CHOOSE_CLI] : [install, CHOOSE_CLI];
+        : (state === 'old' ? 'It does not have the commands Code mode apps need. ' : '') +
+          `${install === 'Install' ? 'Install' : 'Update'} it with "npm i -g ${spec}" in a terminal you can watch` +
+          (tarball ? ` (the CLI ${source} was built with), ` : ', ') +
+          (state === 'old' ? 'which replaces the older tooljet, ' : '') +
+          (tarball ? '' : `enter the address of a ToolJet server to install the CLI it serves, `) +
+          'or choose a tooljet executable you already have. Your choice is saved as the "tooljet.cliPath" setting.' +
+          (untrusted
+            ? ` You have not signed in to ${untrusted} from this computer, so its CLI is installed only if you ask for it and confirm the download.`
+            : '');
+    const actions = tarball
+      ? after === 'install'
+        ? [CHOOSE_CLI]
+        : [install, CHOOSE_CLI]
+      : after === 'install'
+        ? state === 'missing'
+          ? [CHOOSE_CLI]
+          : [ENTER_SERVER, CHOOSE_CLI]
+        : untrusted
+          ? [install, FROM_SERVER, CHOOSE_CLI]
+          : source
+            ? [install, ENTER_SERVER, CHOOSE_CLI]
+            : [ENTER_SERVER, install, CHOOSE_CLI];
     const choice = await deps.ui.ask(message, detail, actions);
-    if (choice === install) {
+    if (choice === FROM_SERVER && untrusted) {
+      const offered = untrusted;
+      untrusted = undefined;
+      const url = await servedTarball(deps, offered);
+      if (!url) {
+        deps.ui.warn(`${offered} does not serve the ToolJet CLI.`);
+        continue;
+      }
+      const confirmed = await deps.ui.ask(
+        `Install the ToolJet CLI from ${url}?`,
+        `${offered} is a server you have not signed in to from this computer. "npm i -g ${url}" downloads a program ` +
+          'from it and runs it on this computer with your account\'s rights, and every later "tooljet" command runs it. ' +
+          'Install it only if this is your own ToolJet server.',
+        [CONFIRM_SERVER_CLI],
+        { warning: true }
+      );
+      if (confirmed !== CONFIRM_SERVER_CLI) return false;
+      const installed = await deps.cli.installCli(url);
+      if (installed.code !== 0) {
+        deps.ui.error(`Installing the ToolJet CLI failed: ${lastError(installed)}`);
+        return false;
+      }
+      tarball = url;
+      after = 'install';
+    } else if (choice === ENTER_SERVER) {
+      const entered = await deps.ui.inputServerAddress(source ?? '', (value) => {
+        const parsed = parseInstance(value.trim().replace(/\/+$/, ''));
+        return parsed.ok ? undefined : parsed.error;
+      });
+      if (!entered) return false;
+      const parsed = parseInstance(entered.trim().replace(/\/+$/, ''));
+      if (!parsed.ok) return false;
+      // An address the user typed is theirs to trust.
+      source = parsed.origin;
+      untrusted = undefined;
+      tarball = await servedTarball(deps, source);
+      if (!tarball) deps.ui.warn(`${source} does not serve the ToolJet CLI.`);
+      after = undefined;
+      continue;
+    } else if (choice === install) {
       const installed = await deps.cli.installCli(spec);
       if (installed.code !== 0) {
         deps.ui.error(`Installing the ToolJet CLI failed: ${lastError(installed)}`);
@@ -115,7 +200,11 @@ export async function ensureCli(deps: Deps, cwd: string, server?: string): Promi
   return true;
 }
 
-/** Makes the CLI's default login the given instance, running `tooljet auth login` when it is not. */
+/**
+ * Makes sure the CLI has a login for the given instance, running `tooljet auth login` when it has none. The CLI keeps
+ * one login per instance and app commands name theirs (`--instance`, or the project's record), so this never changes
+ * which instance the CLI's default login is.
+ */
 export async function ensureLogin(deps: Deps, instance: string, cwd: string): Promise<boolean> {
   const result = await signIn(deps, instance, cwd);
   if (result.ok || result.declined) return result.ok;
@@ -126,21 +215,21 @@ export async function ensureLogin(deps: Deps, instance: string, cwd: string): Pr
 type SignIn = { ok: true; declined?: false } | { ok: false; declined: true } | { ok: false; declined?: false; error: string };
 
 async function signIn(deps: Deps, instance: string, cwd: string): Promise<SignIn> {
-  const state = deps.host.loginState(instance);
-  if (state === 'default') return { ok: true };
+  if (deps.host.loginState(instance) !== 'none') return { ok: true };
   const other = deps.host.defaultLoginOrigin();
   const choice = await deps.ui.ask(
     `Sign in to ${instance}?`,
-    (state === 'stored' || other
-      ? `The ToolJet CLI is signed in to ${other ?? 'another instance'}, and its app commands use that login. `
-      : 'The ToolJet CLI is not signed in to this instance. ') +
+    'The ToolJet CLI is not signed in to this instance. ' +
       '"tooljet auth login" shows a code in a terminal and opens your browser; approve the code there while signed in to ToolJet. ' +
-      'The token is stored by the CLI, never by the editor.',
+      'The token is stored by the CLI, never by the editor.' +
+      (other && other !== instance
+        ? ` Your default login stays ${other}: only folders cloned from ${instance} use the new login.`
+        : ''),
     ['Sign in']
   );
   if (choice !== 'Sign in') return { ok: false, declined: true };
   const result = await run(deps, ['auth', 'login', '--url', instance], cwd, 'ToolJet: sign in');
-  if (result.code !== 0 || deps.host.loginState(instance) !== 'default') return { ok: false, error: lastError(result) };
+  if (result.code !== 0 || deps.host.loginState(instance) === 'none') return { ok: false, error: lastError(result) };
   return { ok: true };
 }
 
@@ -230,21 +319,39 @@ async function pullStoredSource(deps: Deps, folder: string): Promise<SourceState
   return /no source is stored|isn't saved|not saved/i.test(text) ? 'none' : 'unknown';
 }
 
-export async function openFromLink(req: OpenRequest, deps: Deps, home: string): Promise<Outcome> {
+export const OPEN = 'Open';
+export const OPEN_NEW = 'Open from this server';
+
+/**
+ * `typed`: the user entered the instance themselves ("ToolJet: Open app..."), so it is not a link's claim and needs
+ * no new-server warning.
+ */
+export async function openFromLink(req: OpenRequest, deps: Deps, home: string, typed = false): Promise<Outcome> {
   const { ui, host, store } = deps;
 
-  // 1. Nothing contacts the instance before the user agrees to it.
+  // 1. Nothing contacts the instance before the user agrees to it; a server new to this computer is named as such.
   const version = req.version ? `, version "${req.version}"` : '';
   const api = req.api && req.api !== req.instance ? ` Its server is at ${req.api}.` : '';
-  const confirmed = await ui.ask(
-    `Open a ToolJet app from ${req.instance}?`,
-    `App ${req.appId}${version}.${api}\n\nThe ToolJet CLI will sign in to this instance if needed, clone the app into a folder ` +
-      'you choose and start its live preview. Continue only if you clicked "Open in" on your own ToolJet instance.',
-    ['Open']
-  );
-  if (confirmed !== 'Open') return 'cancelled';
+  const known = typed || isKnownServer(deps, req.api ?? req.instance);
+  const confirmed = known
+    ? await ui.ask(
+        `Open a ToolJet app from ${req.instance}?`,
+        `App ${req.appId}${version}.${api}\n\nThe ToolJet CLI will clone the app into a folder you choose, and the new ` +
+          'window offers to start its live preview. Continue only if you clicked "Open in" on your own ToolJet instance.',
+        [OPEN]
+      )
+    : await ui.ask(
+        `Open a ToolJet app from a new server: ${req.instance}?`,
+        `App ${req.appId}${version}.${api}\n\nYou have not signed in to ${req.api ?? req.instance} from this computer. ` +
+          'Any web page can show an "Open in" link that names any server, so continue only if this is the address of your ' +
+          'own ToolJet. Signing in to it does not change the server your other projects and terminal commands use, and ' +
+          "nothing from it runs on this computer until you start the app's live preview.",
+        [OPEN_NEW],
+        { warning: true }
+      );
+  if (confirmed !== (known ? OPEN : OPEN_NEW)) return 'cancelled';
 
-  if (!(await ensureCli(deps, home, req.api ?? req.instance))) return 'cancelled';
+  if (!(await ensureCli(deps, home, req.api ?? req.instance, typed))) return 'cancelled';
   const server = await signInForLink(deps, req, home);
   if (!server) return 'cancelled';
   const linked = { ...req, instance: server };
@@ -283,8 +390,8 @@ export async function openFromLink(req: OpenRequest, deps: Deps, home: string): 
   if (!name) return 'cancelled';
   const folder = host.join(parent, name);
 
-  // 4. Clone, check out the version, bring in the code ToolJet stores, install.
-  const clone = await run(deps, ['app', 'clone', req.appId, name], parent, 'ToolJet: clone');
+  // 4. Clone with that server's login (the clone records it), check out the version, bring in the stored code, install.
+  const clone = await run(deps, ['app', 'clone', req.appId, name, '--instance', server], parent, 'ToolJet: clone');
   if (clone.code !== 0) {
     ui.error(`Cloning the app failed: ${lastError(clone)}`);
     return 'failed';
@@ -302,10 +409,10 @@ export async function openFromLink(req: OpenRequest, deps: Deps, home: string): 
   await store.setLink({ appId: req.appId, instance: server, folder });
 
   /*
-    The live preview uploads what is in the folder. Start it only when that is the app's code: code ToolJet stores
+    The live preview uploads what is in the folder. Offer it only when that is the app's code: code ToolJet stores
     and its editor owns, or an app the clone set up fresh. Otherwise the folder holds the starter template (code
     not stored in ToolJet) or a copy of code its Git repository owns, and a live preview from it would replace the
-    developer's.
+    developer's. It is only offered: the new window shows a button, since dev builds the cloned code on this computer.
   */
   const notStored = /already in Code mode|code isn't saved in ToolJet/i.test(stripAnsi(clone.output));
   const startPreview = source === 'platform' || (!notStored && source !== 'repository');

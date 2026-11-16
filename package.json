@@ -2,7 +2,7 @@
   "name": "tooljet",
   "displayName": "ToolJet",
   "description": "Open ToolJet Code mode apps from the browser, run a live preview, check and publish from VS Code, Cursor and Windsurf.",
-  "version": "0.1.2",
+  "version": "0.1.4",
   "publisher": "tooljet",
   "license": "AGPL-3.0-only",
   "repository": {

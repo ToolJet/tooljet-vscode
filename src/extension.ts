@@ -8,13 +8,14 @@ import { loginStateFor, readStoredLogins } from './credentials';
 import { Deps, openFromLink } from './openFlow';
 import { AppJson, Host, LinkRecord, Store, Ui } from './ports';
 import * as project from './projectCommands';
-import { cliTarballUrl } from './spawnSpec';
+import { cliTarballUrl, tarballOriginAllowed } from './spawnSpec';
 import { StatusBar } from './statusBar';
 import { parseInstance, parseOpenUri } from './uri';
 import { VscodeCli } from './vscodeCli';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const PENDING_TTL_MS = 10 * 60 * 1000;
+const START_PREVIEW = 'Start live preview';
 
 class GlobalStore implements Store {
   constructor(private readonly state: vscode.Memento) {}
@@ -70,6 +71,7 @@ const host: Host = {
   },
   cliTarball: async (origin) => {
     // HEAD, so nothing is downloaded; a gzip answer, since a dev frontend answers every path with its index.html.
+    if (!tarballOriginAllowed(origin)) return undefined;
     const url = cliTarballUrl(origin);
     try {
       const res = await fetch(url, { method: 'HEAD', redirect: 'error', signal: AbortSignal.timeout(5000) });
@@ -85,7 +87,12 @@ const host: Host = {
 };
 
 const ui: Ui = {
-  ask: (message, detail, actions) => Promise.resolve(vscode.window.showInformationMessage(message, { modal: true, detail }, ...actions)),
+  ask: (message, detail, actions, options) =>
+    Promise.resolve(
+      options?.warning
+        ? vscode.window.showWarningMessage(message, { modal: true, detail }, ...actions)
+        : vscode.window.showInformationMessage(message, { modal: true, detail }, ...actions)
+    ),
   pickParentFolder: async (defaultPath) => {
     const picked = await vscode.window.showOpenDialog({
       canSelectFiles: false,
@@ -239,14 +246,14 @@ export function activate(context: vscode.ExtensionContext): void {
     });
     if (!appId) return;
     const origin = parseInstance(instance.trim());
-    if (origin.ok) await runOpen({ instance: origin.origin, appId: appId.trim().toLowerCase() });
+    if (origin.ok) await runOpen({ instance: origin.origin, appId: appId.trim().toLowerCase() }, true);
   };
 
-  const runOpen = async (req: Parameters<typeof openFromLink>[0]) => {
+  const runOpen = async (req: Parameters<typeof openFromLink>[0], typed = false) => {
     if (opening) return void vscode.window.showWarningMessage('A ToolJet app is already being opened.');
     opening = true;
     try {
-      const outcome = await openFromLink(req, deps, os.homedir());
+      const outcome = await openFromLink(req, deps, os.homedir(), typed);
       output.appendLine(`Open app ${req.appId} from ${req.instance}: ${outcome}`);
     } catch (err) {
       vscode.window.showErrorMessage(`Opening the ToolJet app failed: ${(err as Error).message}`);
@@ -304,17 +311,21 @@ export function activate(context: vscode.ExtensionContext): void {
     { dispose: () => dev?.running.kill() }
   );
 
-  // A window opened from a link starts the dev loop, once the workspace is trusted.
+  /*
+    A window opened from a link offers the live preview; it never starts it. `tooljet app dev` builds the cloned code
+    on this computer (its PostCSS config runs in Node), so that is the user's own click, here, after they have seen
+    the folder.
+  */
   const p = refresh();
   if (p) {
-    void store.takePendingDev(p.root).then((pending) => {
+    void store.takePendingDev(p.root).then(async (pending) => {
       if (!pending) return;
-      if (vscode.workspace.isTrusted) return void startDev();
-      const once = vscode.workspace.onDidGrantWorkspaceTrust(() => {
-        once.dispose();
-        void startDev();
-      });
-      context.subscriptions.push(once);
+      const where = project.instanceOf(p, deps);
+      const choice = await vscode.window.showInformationMessage(
+        `Opened ${p.app.name ?? 'the ToolJet app'}${where ? ` from ${where}` : ''}. Start its live preview when you are ready: it builds the app's code on this computer.`,
+        START_PREVIEW
+      );
+      if (choice === START_PREVIEW) await startDev();
     });
   }
 }

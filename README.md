@@ -8,16 +8,18 @@ credentials of its own.
 
 The extension is not on a marketplace yet. Install the `.vsix`:
 
-- **VS Code**: Extensions view → `...` → *Install from VSIX...*, or `code --install-extension tooljet-0.1.2.vsix`
-- **Cursor**: `cursor --install-extension tooljet-0.1.2.vsix`, or drag the file into the Extensions view
-- **Windsurf**: `windsurf --install-extension tooljet-0.1.2.vsix`, or *Install from VSIX...* in the Extensions view
+- **VS Code**: Extensions view → `...` → *Install from VSIX...*, or `code --install-extension tooljet-0.1.4.vsix`
+- **Cursor**: `cursor --install-extension tooljet-0.1.4.vsix`, or drag the file into the Extensions view
+- **Windsurf**: `windsurf --install-extension tooljet-0.1.4.vsix`, or *Install from VSIX...* in the Extensions view
 
 Build it yourself with `npm ci && npm run package` (it lands in `dist/`).
 
 You also need the ToolJet CLI with the Code mode commands (`tooljet app ...`, `tooljet auth login`). The extension
-offers to install it when it is missing, in a terminal you can watch, and only if you agree: from the ToolJet server
-you are opening (`npm i -g <server>/api/code-mode/cli/tooljet-cli.tgz`, the CLI that server was built with) when it
-serves one, else `npm i -g @tooljet/cli@latest`. When the CLI is too old (no `app` commands), it offers **Update the CLI** and **Choose a CLI...**: the second
+offers to install it when it is missing, in a terminal you can watch, and only if you agree: from a ToolJet server
+you have signed in to before, or typed in yourself (`npm i -g <server>/api/code-mode/cli/tooljet-cli.tgz`, the CLI
+that server was built with, https or a local stack only) when it serves one, else `npm i -g @tooljet/cli@latest`. A
+server only a link named is never asked first: npm is offered, and that server's CLI only through
+**Install the server's CLI...** and a second warning that names the download. When the CLI is out of date (no `app` commands, like npm's 0.0.14), it offers **Update the CLI**, which replaces the older `tooljet`, and **Choose a CLI...**: the second
 picks a `tooljet` executable, for example `cli/bin/run` in a ToolJet checkout, and saves it as **ToolJet: Cli Path**
 (`tooljet.cliPath`, a user setting).
 
@@ -31,22 +33,26 @@ vscode://tooljet.tooljet/open?instance=https%3A%2F%2Ftooljet.example.com&app=421
 
 The extension then:
 
-1. shows the instance and app and asks you to confirm before contacting anything;
+1. shows the instance and app and asks you to confirm before contacting anything. A server you have never signed in
+   to from this computer gets a warning instead, naming it in full as a new server;
 2. checks the `tooljet` CLI is installed and new enough (and offers to install, update or choose one);
 3. runs `tooljet auth login --url <server>` in a terminal if the CLI is not signed in to ToolJet's server (the link's
-   `api`, else its `instance`): you approve the code in your browser, and the CLI stores the token. If that address
-   has no browser sign-in (a frontend served apart from its API), it asks for the server address;
+   `api`, else its `instance`): you approve the code in your browser, and the CLI stores the token. Signing in keeps
+   the CLI's default login: only the folder cloned from that server uses the new one. If that address has no browser
+   sign-in (a frontend served apart from its API), it asks for the server address;
 4. asks for a parent folder and a folder name. The first time it starts in `~/ToolJet apps`, then in the last folder
    you used; a folder inside a Git repository needs confirming; the full path of the clone shows as you type the name;
-5. runs `tooljet app clone`, `tooljet app checkout <version>` when the link names one, `tooljet app source-pull` (the
+5. runs `tooljet app clone --instance <server>` (the CLI records the server in the project's
+   `.tooljet/instance.json`, and its commands there use that server's login), `tooljet app checkout <version>` when the link names one, `tooljet app source-pull` (the
    app's code ToolJet stores, when the CLI has the command) and `tooljet app install` (npm, pnpm or yarn with install
    scripts off);
-6. opens the folder in a new window and starts the live preview (`tooljet app dev`) in a terminal there.
+6. opens the folder in a new window, which offers **Start live preview** (`tooljet app dev` in a terminal). It never
+   starts by itself: the live preview builds the app's code, its PostCSS config included, on this computer.
 
 If the app is already cloned into a folder this editor knows, it offers to open that folder instead. The live
-preview starts only when the folder holds the app's code: code the ToolJet editor owns, or a new app. When the app's
-code isn't saved in ToolJet, or its Git repository owns it, the extension clones and opens the project but does not
-start the live preview, so it never replaces your live preview with the starter template or a copy.
+preview is offered only when the folder holds the app's code: code the ToolJet editor owns, or a new app. When the
+app's code isn't saved in ToolJet, or its Git repository owns it, the extension clones and opens the project without
+the offer, so it never replaces your live preview with the starter template or a copy.
 
 ### Link format
 
@@ -100,8 +106,8 @@ All under **ToolJet:** in the Command Palette, and in the menu behind the status
 The status bar shows the app, the instance it came from, and the live preview: starting, on with the time of the
 last update, warnings, or the last error. Live preview warnings and TypeScript errors also go to the Problems panel.
 
-Before each command that talks to ToolJet, the extension checks the CLI's current login is the instance this folder
-came from (the CLI's app commands use its default login), and offers to sign in again if it is not.
+Each command that talks to ToolJet names the instance this folder came from (`--instance`), so the CLI uses its login
+for that instance whatever its default login is; when it has none, the extension offers to sign in there.
 
 ## Security notes
 
@@ -110,14 +116,19 @@ came from (the CLI's app commands use its default login), and offers to sign in 
   `~/.tooljet/credentials.json`, written by the CLI. The extension reads only each login's instance address from that
   file, never its token.
 - **Confirmation first.** Anything can open a `vscode://` link, a web page included, so nothing is contacted, run or
-  written before you confirm the instance and app. Only https instances are accepted, plus plain http on loopback.
+  written before you confirm the instance and app, and a server you have never signed in to is called out as new.
+  Only https instances are accepted, plus plain http on loopback.
+- **A link changes nothing outside its folder.** Signing in from a link never changes the CLI's default login, and
+  the clone is tied to its server, so terminal commands in your other projects keep using the instance they used.
+  The extension needs a CLI with `--instance` for this, and asks to update an older one.
 - **No shell.** On macOS and Linux every CLI run is a child process with an argument list, never a shell command line.
   On Windows the npm shim needs a shell, so arguments with shell metacharacters are refused. App ids must be UUIDs and
   folder and version names are restricted to plain characters.
 - **No install scripts.** Dependencies install through `tooljet app install`, which turns lifecycle scripts off. The
-  CLI itself is installed only on your consent, in a visible terminal.
-- **Trusted workspaces only.** The commands build and run the app's code, so in Restricted Mode they do nothing; a
-  window opened from a link starts the live preview once you trust the folder.
+  CLI itself is installed only on your consent, in a visible terminal, and from a server a link named only after a
+  second confirmation that names the download.
+- **Nothing runs by itself.** The commands build and run the app's code, so in Restricted Mode they do nothing, and a
+  window opened from a link only offers the live preview: it starts when you click **Start live preview**.
 - **The CLI path is a machine setting.** A workspace's `.vscode/settings.json` cannot point the extension at another
   executable.
 - The links log (Output → ToolJet) records why a link was refused, never the link itself.

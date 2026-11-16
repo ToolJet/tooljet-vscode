@@ -1,24 +1,27 @@
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
 
-import { openFromLink } from '../src/openFlow';
-import { makeDeps } from './fakes';
+import { CONFIRM_SERVER_CLI, ensureCli, FROM_SERVER, openFromLink } from '../src/openFlow';
+import { cliTarballUrl, tarballOriginAllowed } from '../src/spawnSpec';
+import { GOOD_CLONE_HELP, makeDeps } from './fakes';
 
 const APP = '421df0e7-861a-43fd-9b31-fa67f6649dfa';
 const INSTANCE = 'https://tooljet.example.com';
 const req = { instance: INSTANCE, appId: APP };
 const HOME = '/home/me';
+/** The clone the flow runs: with the server's login, which the CLI records in the project. */
+const clone = (dir: string, server = INSTANCE) => `app clone ${APP} ${dir} --instance ${server}`;
 
 test('the happy path: confirm, clone, install, link, open; dev starts in the new window', async () => {
   const { deps, cli, ui, store, opened } = makeDeps({ logins: { default: INSTANCE } });
   const outcome = await openFromLink({ ...req, folder: 'orders' }, deps, HOME);
   assert.equal(outcome, 'cloned');
   assert.equal(ui.asked[0], `Open a ToolJet app from ${INSTANCE}?`);
-  assert.deepEqual(cli.work, [`app clone ${APP} orders`, 'app source-pull', 'app install']);
+  assert.deepEqual(cli.work, [clone('orders'), 'app source-pull', 'app install']);
   assert.equal(cli.find('app clone')?.cwd, '/home/me/apps');
   assert.equal(cli.find('app install')?.cwd, '/home/me/apps/orders');
   assert.deepEqual(opened, ['/home/me/apps/orders']);
-  assert.equal(store.pending, '/home/me/apps/orders');
+  assert.equal(store.pending, '/home/me/apps/orders', 'the new window offers the live preview');
   assert.deepEqual(store.linkList, [{ appId: APP, instance: INSTANCE, folder: '/home/me/apps/orders' }]);
   assert.equal(store.parent, '/home/me/apps', 'remembers the parent folder');
   assert.deepEqual(ui.messages, []);
@@ -41,18 +44,115 @@ test('signs in with tooljet auth login --url when there is no login for the inst
   });
   assert.equal(await openFromLink(req, deps, HOME), 'cloned');
   assert.ok(ui.asked.includes(`Sign in to ${INSTANCE}?`));
-  assert.deepEqual(cli.work.slice(0, 2), [`auth login --url ${INSTANCE}`, `app clone ${APP} tooljet-app-421df0e7`]);
+  assert.deepEqual(cli.work.slice(0, 2), [`auth login --url ${INSTANCE}`, clone('tooljet-app-421df0e7')]);
   assert.equal(cli.find('auth')?.visible, true, 'sign-in runs in a visible terminal');
 });
 
-test('signs in again when the default login is another instance, since app commands use the default', async () => {
-  const { deps, cli, logins } = makeDeps({ logins: { default: 'https://other.example.com', stored: [INSTANCE] } });
-  cli.reply(`auth login --url ${INSTANCE}`, () => {
-    logins.default = INSTANCE;
-    return { code: 0, output: '' };
-  });
+test("a stored login for the instance is used as it is: the CLI's default login is never switched", async () => {
+  const { deps, cli, ui, logins } = makeDeps({ logins: { default: 'https://other.example.com', stored: [INSTANCE] } });
+  assert.equal(await openFromLink({ ...req, folder: 'o' }, deps, HOME), 'cloned');
+  assert.equal(cli.work[0], clone('o'), 'no sign-in');
+  assert.ok(!cli.work.some((w) => w.startsWith('auth login')));
+  assert.equal(logins.default, 'https://other.example.com');
+  assert.deepEqual(ui.warnings, [], 'an instance the CLI has a login for is not new');
+});
+
+test('signing in to a new server keeps the default login, and says so', async () => {
+  const { deps, cli, ui, logins } = makeDeps({ logins: { default: 'https://other.example.com' } });
+  // The CLI keeps the default when it signs in to another instance.
+  cli.reply(`auth login --url ${INSTANCE}`, () => (logins.stored.push(INSTANCE), { code: 0, output: '' }));
+  assert.equal(await openFromLink({ ...req, folder: 'o' }, deps, HOME), 'cloned');
+  assert.deepEqual(cli.work.slice(0, 2), [`auth login --url ${INSTANCE}`, clone('o')]);
+  assert.equal(logins.default, 'https://other.example.com');
+  const detail = ui.details[ui.asked.indexOf(`Sign in to ${INSTANCE}?`)];
+  assert.match(detail, /Your default login stays https:\/\/other\.example\.com/);
+});
+
+test('a server new to this computer gets a warning naming it in full; a known one does not', async () => {
+  const fresh = makeDeps({ logins: { default: 'https://mine.example.com' } });
+  fresh.cli.reply(`auth login --url ${INSTANCE}`, () => (fresh.logins.stored.push(INSTANCE), { code: 0, output: '' }));
+  assert.equal(await openFromLink(req, fresh.deps, HOME), 'cloned');
+  assert.deepEqual(fresh.ui.warnings, [`Open a ToolJet app from a new server: ${INSTANCE}?`]);
+  assert.match(fresh.ui.details[0], /You have not signed in to https:\/\/tooljet\.example\.com from this computer/);
+
+  const declined = makeDeps();
+  declined.ui.answer('Open a ToolJet app from a new server', 'Open');
+  assert.equal(await openFromLink(req, declined.deps, HOME), 'cancelled', 'only the new-server button goes on');
+  assert.deepEqual(declined.cli.calls, []);
+
+  const known = makeDeps({ logins: { default: INSTANCE } });
+  await openFromLink(req, known.deps, HOME);
+  assert.deepEqual(known.ui.warnings, []);
+  assert.equal(known.ui.asked[0], `Open a ToolJet app from ${INSTANCE}?`);
+
+  // An instance the user typed in ("ToolJet: Open app...") is theirs, not a link's claim.
+  const typed = makeDeps();
+  typed.cli.reply(`auth login --url ${INSTANCE}`, () => (typed.logins.stored.push(INSTANCE), { code: 0, output: '' }));
+  assert.equal(await openFromLink(req, typed.deps, HOME, true), 'cloned');
+  assert.deepEqual(typed.ui.warnings, []);
+});
+
+test("a link's new server is never asked for its CLI unless the user picks it: npm comes first", async () => {
+  const { deps, cli, ui, tarballChecks } = makeDeps({ servesCli: [INSTANCE] });
+  cli.installed = false;
+  cli.onInstall = () => (cli.installed = true);
+  cli.reply(`auth login --url ${INSTANCE}`, () => ({ code: 0, output: '' }));
+  ui.answer('Sign in', undefined);
   await openFromLink(req, deps, HOME);
-  assert.equal(cli.work[0], `auth login --url ${INSTANCE}`);
+  assert.deepEqual(tarballChecks, []);
+  assert.deepEqual(cli.installedFrom, ['@tooljet/cli@latest']);
+  const detail = ui.details[ui.asked.indexOf('The ToolJet CLI is not installed.')];
+  assert.match(detail, /its CLI is installed only if you ask for it and confirm the download/);
+});
+
+test("the new server's CLI needs a second, warning confirmation naming the download", async () => {
+  const url = cliTarballUrl(INSTANCE);
+  const declined = makeDeps({ servesCli: [INSTANCE] });
+  declined.cli.installed = false;
+  declined.ui.answer('The ToolJet CLI is not installed', FROM_SERVER).answer('Install the ToolJet CLI from', undefined);
+  assert.equal(await openFromLink(req, declined.deps, HOME), 'cancelled');
+  assert.equal(declined.cli.installs, 0);
+  assert.deepEqual(declined.ui.warnings.slice(1), [`Install the ToolJet CLI from ${url}?`]);
+  assert.match(declined.ui.details[declined.ui.asked.indexOf(`Install the ToolJet CLI from ${url}?`)], /npm i -g https:\/\/tooljet\.example\.com\/api\/code-mode\/cli\/tooljet-cli\.tgz/);
+
+  const accepted = makeDeps({ servesCli: [INSTANCE] });
+  accepted.cli.installed = false;
+  accepted.cli.onInstall = () => (accepted.cli.installed = true);
+  accepted.cli.reply(`auth login --url ${INSTANCE}`, () => (accepted.logins.stored.push(INSTANCE), { code: 0, output: '' }));
+  accepted.ui.answer('The ToolJet CLI is not installed', FROM_SERVER).answer('Install the ToolJet CLI from', CONFIRM_SERVER_CLI);
+  assert.equal(await openFromLink(req, accepted.deps, HOME), 'cloned');
+  assert.deepEqual(accepted.cli.installedFrom, [url]);
+
+  // A server that serves no CLI: said so, and the choice is offered again without it.
+  const unserved = makeDeps();
+  unserved.cli.installed = false;
+  const offers: string[][] = [];
+  const ask = unserved.ui.ask.bind(unserved.ui);
+  unserved.ui.ask = async (m, d, a, o) => {
+    if (!m.startsWith('The ToolJet CLI is not installed')) return ask(m, d, a, o);
+    offers.push(a);
+    return offers.length === 1 ? FROM_SERVER : undefined;
+  };
+  assert.equal(await openFromLink(req, unserved.deps, HOME), 'cancelled');
+  assert.equal(unserved.cli.installs, 0);
+  assert.ok(unserved.ui.messages.some((m) => m.text === `${INSTANCE} does not serve the ToolJet CLI.`));
+  assert.ok(offers[0].includes(FROM_SERVER) && !offers[1].includes(FROM_SERVER));
+});
+
+test('the CLI is installed from a server only over https, or from this computer', () => {
+  assert.equal(tarballOriginAllowed('https://tooljet.example.com'), true);
+  assert.equal(tarballOriginAllowed('http://localhost:3055'), true);
+  assert.equal(tarballOriginAllowed('http://127.0.0.1:3000'), true);
+  assert.equal(tarballOriginAllowed('http://tooljet.example.com'), false);
+  assert.equal(tarballOriginAllowed('file:///tmp/x.tgz'), false);
+});
+
+test('a CLI without --instance is too old: it would switch the default login on sign-in', async () => {
+  const { deps, cli, ui } = makeDeps({ logins: { default: INSTANCE } });
+  cli.reply('app clone --help', { code: 0, output: 'USAGE\n  $ tooljet app clone APPID [DIR]\n' });
+  ui.answer('Your ToolJet CLI is out of date', undefined);
+  assert.equal(await openFromLink(req, deps, HOME), 'cancelled');
+  assert.deepEqual(cli.work, []);
 });
 
 test('stops when sign-in is declined or fails', async () => {
@@ -110,7 +210,7 @@ test("installs the CLI the instance serves (its server's, when the link names on
 test('treats a CLI without the app commands as too old', async () => {
   const { deps, cli, ui } = makeDeps({ logins: { default: INSTANCE } });
   cli.reply('app clone --help', { code: 2, output: 'command app:clone not found' });
-  ui.answer('This ToolJet CLI is too old', undefined);
+  ui.answer('Your ToolJet CLI is out of date', undefined);
   assert.equal(await openFromLink(req, deps, HOME), 'cancelled');
   assert.deepEqual(cli.work, []);
 });
@@ -125,20 +225,45 @@ test('reports a CLI that installs but is not on the PATH', async () => {
 test('a too-old CLI can be updated, and when npm has no newer one, another CLI can be chosen', async () => {
   const { deps, cli, ui, cliPaths } = makeDeps({ logins: { default: INSTANCE } });
   // Only the CLI the user picks has the app commands.
-  cli.reply('app clone --help', () => (deps.cli === cli ? { code: 2, output: 'command app:clone not found' } : { code: 0, output: '' }));
+  cli.reply('app clone --help', () => (deps.cli === cli ? { code: 2, output: 'command app:clone not found' } : GOOD_CLONE_HELP));
   ui.cliPath = '/src/ToolJet/cli/bin/run';
-  ui.answer('This ToolJet CLI is too old', 'Update the CLI').answer('The ToolJet CLI from npm', 'Choose a CLI...');
+  ui.answer('Your ToolJet CLI is out of date', 'Update the CLI').answer('The ToolJet CLI from npm', 'Choose a CLI...');
   assert.equal(await openFromLink({ ...req, folder: 'o' }, deps, HOME), 'cloned');
   assert.equal(cli.installs, 1);
   assert.deepEqual(cliPaths, ['/src/ToolJet/cli/bin/run']);
   assert.ok(ui.asked.includes('The ToolJet CLI from npm does not have the Code mode commands yet.'));
 });
 
+test('the npm CLI from before Code mode: one click installs the CLI the server serves, and says it replaces the old one', async () => {
+  const { deps, cli, ui } = makeDeps({ logins: { default: INSTANCE }, servesCli: [INSTANCE] });
+  let upgraded = false;
+  cli.reply('app clone --help', () => (upgraded ? GOOD_CLONE_HELP : { code: 2, output: 'command app:clone not found' }));
+  const install = cli.installCli.bind(cli);
+  cli.installCli = (spec: string) => ((upgraded = true), install(spec));
+  ui.answer('Your ToolJet CLI is out of date', 'Update the CLI');
+  assert.equal(await openFromLink({ ...req, folder: 'o' }, deps, HOME), 'cloned');
+  assert.deepEqual(cli.installedFrom, [cliTarballUrl(INSTANCE)]);
+  assert.ok(ui.details.some((d) => d.includes(`npm i -g ${cliTarballUrl(INSTANCE)}`) && d.includes('replaces the older tooljet')));
+});
+
+test('a project with no known server asks for one first: a CLI that old is not signed in anywhere', async () => {
+  const project = { root: '/w/orders', app: { appId: 'a1' } } as any;
+  const { deps, cli, ui } = makeDeps({ servesCli: [INSTANCE] });
+  let upgraded = false;
+  cli.reply('app clone --help', () => (upgraded ? GOOD_CLONE_HELP : { code: 2, output: 'command app:clone not found' }));
+  const install = cli.installCli.bind(cli);
+  cli.installCli = (spec: string) => ((upgraded = true), install(spec));
+  ui.serverAddress = INSTANCE;
+  assert.equal(await ensureCli(deps, project.root), true);
+  assert.ok(ui.asked.every((m) => m === 'Your ToolJet CLI is out of date.'));
+  assert.deepEqual(cli.installedFrom, [cliTarballUrl(INSTANCE)]);
+});
+
 test('a chosen CLI that is still too old is reported, and choosing can be given up', async () => {
   const { deps, cli, ui, cliPaths } = makeDeps({ logins: { default: INSTANCE } });
   cli.reply('app clone --help', { code: 2, output: 'command app:clone not found' });
   ui.cliPath = '/opt/old/tooljet';
-  ui.answer('This ToolJet CLI is too old', 'Choose a CLI...').answer('That ToolJet CLI does not have', undefined);
+  ui.answer('Your ToolJet CLI is out of date', 'Choose a CLI...').answer('That ToolJet CLI does not have', undefined);
   assert.equal(await openFromLink(req, deps, HOME), 'cancelled');
   assert.equal(cli.installs, 0);
   assert.deepEqual(cliPaths, ['/opt/old/tooljet']);
@@ -156,6 +281,7 @@ test("signs in to the link's server origin when it names one, and links the fold
   });
   assert.equal(await openFromLink({ instance: FRONTEND, api: API, appId: APP, folder: 'o' }, deps, HOME), 'cloned');
   assert.equal(cli.work[0], `auth login --url ${API}`);
+  assert.equal(cli.work[1], clone('o', API));
   assert.equal(store.linkList[0].instance, API);
   assert.ok(ui.asked.includes(`Sign in to ${API}?`));
 });
@@ -185,7 +311,7 @@ test('when the page has no browser sign-in, asks for the server address and sign
 test('checks out the requested version after cloning', async () => {
   const { deps, cli } = makeDeps({ logins: { default: INSTANCE } });
   await openFromLink({ ...req, version: 'v2', folder: 'o' }, deps, HOME);
-  assert.deepEqual(cli.work, [`app clone ${APP} o`, 'app checkout v2', 'app source-pull', 'app install']);
+  assert.deepEqual(cli.work, [clone('o'), 'app checkout v2', 'app source-pull', 'app install']);
   assert.equal(cli.find('app checkout')?.cwd, '/home/me/apps/o');
 });
 
@@ -216,7 +342,7 @@ const NOT_SAVED = "✓ Cloned \"Orders\" into o/ (3 queries, 2 routes)\nThis app
 
 test('pulls the code ToolJet stores; code the ToolJet editor owns gets a live preview even if the clone said otherwise', async () => {
   const { deps, cli, store, ui } = makeDeps({ logins: { default: INSTANCE } });
-  cli.reply(`app clone ${APP} o`, { code: 0, output: NOT_SAVED });
+  cli.reply(clone('o'), { code: 0, output: NOT_SAVED });
   cli.reply('app source-pull', { code: 0, output: '✓ Pulled revision 4 (owner platform): 23 files written, 0 removed\n' });
   assert.equal(await openFromLink({ ...req, folder: 'o' }, deps, HOME), 'cloned');
   assert.equal(cli.find('app source-pull')?.cwd, '/home/me/apps/o');
@@ -234,7 +360,7 @@ test('code a Git repository owns is pulled but gets no live preview', async () =
 
 test('a CLI without source-pull falls back to what the clone said', async () => {
   const { deps, cli } = makeDeps({ logins: { default: INSTANCE } });
-  cli.reply(`app clone ${APP} o`, { code: 0, output: NOT_SAVED });
+  cli.reply(clone('o'), { code: 0, output: NOT_SAVED });
   cli.reply('app source-pull --help', { code: 2, output: 'command app:source-pull not found' });
   assert.equal(await openFromLink({ ...req, folder: 'o' }, deps, HOME), 'cloned-no-dev');
   assert.ok(!cli.work.includes('app source-pull'));
@@ -247,7 +373,7 @@ for (const notice of [
 ]) {
   test(`does not start the live preview for an app whose code lives in a repository: ${notice.slice(0, 30)}`, async () => {
     const { deps, cli, ui, store, opened } = makeDeps({ logins: { default: INSTANCE } });
-    cli.reply(`app clone ${APP} o`, { code: 0, output: `✓ Cloned "Orders" into o/ (3 queries, 2 routes)\n${notice}\n` });
+    cli.reply(clone('o'), { code: 0, output: `✓ Cloned "Orders" into o/ (3 queries, 2 routes)\n${notice}\n` });
     assert.equal(await openFromLink({ ...req, folder: 'o' }, deps, HOME), 'cloned-no-dev');
     assert.equal(store.pending, undefined);
     assert.deepEqual(opened, ['/home/me/apps/o']);
@@ -257,7 +383,7 @@ for (const notice of [
 
 test('a failed clone stops before opening anything', async () => {
   const { deps, cli, ui, opened, store } = makeDeps({ logins: { default: INSTANCE } });
-  cli.reply(`app clone ${APP} o`, { code: 1, output: '\n\x1b[1;31m✗ Error\x1b[0m : App not found (HTTP 404)\n' });
+  cli.reply(clone('o'), { code: 1, output: '\n\x1b[1;31m✗ Error\x1b[0m : App not found (HTTP 404)\n' });
   assert.equal(await openFromLink({ ...req, folder: 'o' }, deps, HOME), 'failed');
   assert.deepEqual(opened, []);
   assert.deepEqual(store.linkList, []);

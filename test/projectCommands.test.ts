@@ -36,13 +36,13 @@ test('a folder without an appId is not a project; an unlinked one uses the defau
 
 test('check runs `tooljet app check` in the project and returns its findings', async () => {
   const { p, deps, cli, ui } = setup();
-  cli.reply('app check', {
+  cli.reply(`app check --instance ${INSTANCE}`, {
     code: 1,
     output:
       'warning App.tsx:3  Buttons need text (jsx-a11y/control-has-associated-label)\n\n\x1b[1;31m✗ Error\x1b[0m : src/App.tsx:9  query "x" does not exist in the app\n\n1 problem\n',
   });
   const result = await project.check(p, deps);
-  assert.deepEqual(cli.work, ['app check']);
+  assert.deepEqual(cli.work, [`app check --instance ${INSTANCE}`]);
   assert.equal(cli.find('app check')?.cwd, ROOT);
   assert.deepEqual(
     result!.findings.map((f) => [f.severity, f.file, f.line]),
@@ -54,11 +54,27 @@ test('check runs `tooljet app check` in the project and returns its findings', a
   assert.match(ui.messages[0].text, /1 problem/);
 });
 
-test('project commands sign in to the linked instance when the default login moved elsewhere', async () => {
+test("project commands name the linked instance, so the CLI's default login elsewhere does not matter", async () => {
   const { p, deps, cli, logins } = setup({ default: 'https://other.example.com', stored: [INSTANCE] });
-  cli.reply(`auth login --url ${INSTANCE}`, () => ((logins.default = INSTANCE), { code: 0, output: '' }));
   await project.pull(p, deps);
-  assert.deepEqual(cli.work, [`auth login --url ${INSTANCE}`, 'app pull']);
+  assert.deepEqual(cli.work, [`app pull --instance ${INSTANCE}`]);
+  assert.equal(logins.default, 'https://other.example.com');
+});
+
+test('an unlinked folder names no instance: the CLI uses its own record for it, else its default login', async () => {
+  const env = makeDeps({ logins: { default: INSTANCE } });
+  env.files.set('/b', { appId: APP });
+  const p = project.findProject(['/b'], env.deps)!;
+  await project.pull(p, env.deps);
+  assert.deepEqual(env.cli.work, ['app pull']);
+});
+
+test('project commands sign in to the linked instance when the CLI has no login there, keeping the default', async () => {
+  const { p, deps, cli, logins } = setup({ default: 'https://other.example.com' });
+  cli.reply(`auth login --url ${INSTANCE}`, () => (logins.stored.push(INSTANCE), { code: 0, output: '' }));
+  await project.pull(p, deps);
+  assert.deepEqual(cli.work, [`auth login --url ${INSTANCE}`, `app pull --instance ${INSTANCE}`]);
+  assert.equal(logins.default, 'https://other.example.com');
 });
 
 test('project commands do not run against another instance when sign-in is declined', async () => {
@@ -73,7 +89,7 @@ test('publish asks for a version number and a confirmation, then runs in a visib
   const ok = setup();
   ok.ui.version = '1.4.0';
   assert.equal(await project.publish(ok.p, ok.deps), true);
-  assert.deepEqual(ok.cli.work, ['app publish -v 1.4.0']);
+  assert.deepEqual(ok.cli.work, [`app publish -v 1.4.0 --instance ${INSTANCE}`]);
   assert.equal(ok.cli.find('app publish')?.visible, true);
   assert.ok(ok.ui.asked.includes('Publish Orders 1.4.0?'));
 
@@ -98,7 +114,7 @@ test('install agent instructions runs `tooljet skill install`', async () => {
 test('start dev runs `tooljet app dev` visibly and reports its status as it goes', async () => {
   const { p, deps, cli } = setup();
   let finish!: (r: { code: number; output: string }) => void;
-  cli.streams.set('app dev', {
+  cli.streams.set(`app dev --instance ${INSTANCE}`, {
     chunks: [
       '\x1b[1;32m✓\x1b[0m Live preview of "Orders" is on (2 queries). Watching frontend/src ...\n',
       '  \x1b[1;33m⚠ Warning\x1b[0m : src/App.tsx:4 link to "/x" matches no route in app.json\n',
