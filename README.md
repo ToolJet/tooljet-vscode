@@ -8,9 +8,9 @@ credentials of its own.
 
 The extension is not on a marketplace yet. Install the `.vsix`:
 
-- **VS Code**: Extensions view → `...` → *Install from VSIX...*, or `code --install-extension tooljet-0.1.3.vsix`
-- **Cursor**: `cursor --install-extension tooljet-0.1.3.vsix`, or drag the file into the Extensions view
-- **Windsurf**: `windsurf --install-extension tooljet-0.1.3.vsix`, or *Install from VSIX...* in the Extensions view
+- **VS Code**: Extensions view → `...` → *Install from VSIX...*, or `code --install-extension tooljet-0.1.4.vsix`
+- **Cursor**: `cursor --install-extension tooljet-0.1.4.vsix`, or drag the file into the Extensions view
+- **Windsurf**: `windsurf --install-extension tooljet-0.1.4.vsix`, or *Install from VSIX...* in the Extensions view
 
 Build it yourself with `npm ci && npm run package` (it lands in `dist/`).
 

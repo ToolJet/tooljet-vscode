@@ -1,7 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.1.4
 
+- The extension's icon is ToolJet's current mark, in place of the old rocket logo.
 - A link naming a server you have never signed in to from this computer gets a warning that names it in full as a new server.
 - The CLI is never installed from a server only a link named without asking: npm is offered first, and that server's CLI only through **Install the server's CLI...** and a second warning naming the download. A server's CLI is installed only over https (or from a local stack).
 - Signing in from a link keeps the CLI's default login; the clone runs with `--instance` and records its server, and project commands name it, so terminal commands elsewhere keep their instance. This needs a CLI with `--instance`; an older one is reported as out of date.
